@@ -19,7 +19,7 @@ try:
     conn.autocommit = True
     logger.info("Initial connection to the database")
 except:
-    logger.info("I am unable to connect to the database (initial)")
+    logger.error("I am unable to connect to the database (initial)")
 
 cur = conn.cursor()
 cur.execute('DELETE FROM public.ethtxs WHERE block = (SELECT Max(block) from public.ethtxs)')
@@ -54,7 +54,7 @@ while True:
         conn = psycopg2.connect("dbname=<yourDB>")
         conn.autocommit = True
     except:
-        logger.info("I am unable to connect to the database")
+        logger.error("I am unable to connect to the database")
 
     cur = conn.cursor()
 
