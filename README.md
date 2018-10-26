@@ -31,7 +31,7 @@ Create a table in Postgres:
 
 Run the script.
 
-	python3.6 you/path/to/script/ethsync.py
+	python3.6 you/path/to/script/ethsync.py <yourDB>
 
 Checking synchronization progress
 
