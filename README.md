@@ -33,6 +33,15 @@ Run the script.
 
 	python3.6 you/path/to/script/ethsync.py <yourDB>
 
+Or use ethstorage.service to run as a deamon. Change string 
+
+	ExecStart=/usr/bin/python3.6 you/path/to/script/ethsync.py <yourDB>
+
+Put the file to	/lib/systemd/system. Then
+
+	systemctl daemon-reload
+	systemctl start ethstorage.service
+
 Checking synchronization progress
 
 	SELECT max(block) FROM ethtxs;
