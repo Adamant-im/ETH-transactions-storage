@@ -62,7 +62,7 @@ while True:
 
     endblock = int(web3.eth.blockNumber)
 
-    print('Max block in db: ' + str(maxblockindb) + '; in chain: ' + str(endblock))
+    print('INFO: Max block in db: ' + str(maxblockindb) + '; in chain: ' + str(endblock))
 
     for block in range(maxblockindb + 1, endblock):
         transactions = web3.eth.getBlockTransactionCount(block)
