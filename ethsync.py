@@ -1,11 +1,18 @@
 from web3 import Web3
 import psycopg2
 import time
+import sys
+
+if len(sys.argv) < 2:
+    print('Please add DB name as an argument')
+    exit()
+
+dbname = sys.argv[1]
 
 web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
 
 try:
-    conn = psycopg2.connect("dbname=<yourDB>")
+    conn = psycopg2.connect("dbname=" + dbname)
     conn.autocommit = True
     print("INFO: Initial connection to the database")
 except:
@@ -41,7 +48,7 @@ def insertion(blockid, tr):
 
 while True:
     try:
-        conn = psycopg2.connect("dbname=<yourDB>")
+        conn = psycopg2.connect("dbname=" + dbname)
         conn.autocommit = True
     except:
         print("ERROR: Connection failed")
