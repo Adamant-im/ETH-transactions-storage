@@ -17,9 +17,9 @@ logger.addHandler(lfh)
 try:
     conn = psycopg2.connect("dbname=<yourDB>")
     conn.autocommit = True
-    logger.info("Initial connection to the database")
+    print("INFO: Initial connection to the database")
 except:
-    logger.error("I am unable to connect to the database (initial)")
+    print("ERROR: Connection failed (initial)")
 
 cur = conn.cursor()
 cur.execute('DELETE FROM public.ethtxs WHERE block = (SELECT Max(block) from public.ethtxs)')
@@ -54,7 +54,7 @@ while True:
         conn = psycopg2.connect("dbname=<yourDB>")
         conn.autocommit = True
     except:
-        logger.error("I am unable to connect to the database")
+        print("ERROR: Connection failed")
 
     cur = conn.cursor()
 
@@ -65,7 +65,7 @@ while True:
 
     endblock = int(web3.eth.blockNumber)
 
-    logger.info('Max block in db: ' + str(maxblockindb) + '; in chain: ' + str(endblock))
+    print('Max block in db: ' + str(maxblockindb) + '; in chain: ' + str(endblock))
 
     for block in range(maxblockindb + 1, endblock):
         transactions = web3.eth.getBlockTransactionCount(block)
