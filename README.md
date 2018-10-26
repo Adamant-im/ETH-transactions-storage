@@ -12,23 +12,29 @@ Postgresql 10.5
 
 
 Import wheels for python:
-pip3 install web3
-pip3 install psycopg2
+
+	pip3 install web3
+	pip3 install psycopg2
 
 
 <yourusername> - user who will run service.
 <yourDB> - target DataBase. Change the DB name in two strings in the script file.
 Create Postgres user for <yourusername>:
-createuser -s <yourusername>
+	
+	createuser -s <yourusername>
+	
 In this example we create superuser.You can use your own grants.
 
 Create a table in Postgres:
-psql -f create_table.sql <yourDB>
+
+	psql -f create_table.sql <yourDB>
 
 Run the script.
+
 	python3.6 you/path/to/script/ethsync.py
 
 Checking synchronization progress
+
 	SELECT max(block) FROM ethtxs;
 
 Additional info:
