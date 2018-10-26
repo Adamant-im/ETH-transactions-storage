@@ -1,18 +1,8 @@
 from web3 import Web3
 import psycopg2
 import time
-import logging
-
 
 web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
-
-
-logger = logging.getLogger("EthTxs")
-logger.setLevel(logging.INFO)
-lfh = logging.FileHandler("/var/log/ethtxs.log")
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-lfh.setFormatter(formatter)
-logger.addHandler(lfh)
 
 try:
     conn = psycopg2.connect("dbname=<yourDB>")
@@ -71,8 +61,6 @@ while True:
         transactions = web3.eth.getBlockTransactionCount(block)
         if transactions > 0:
             insertion(block, transactions)
-        else:
-            logger.info('Block ' + str(block) + ' does not contain transactions')
     cur.close()
     conn.close()
     time.sleep(30)
