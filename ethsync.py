@@ -9,7 +9,7 @@ if len(sys.argv) < 2:
 
 dbname = sys.argv[1]
 
-web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
+web3 = Web3()
 
 try:
     conn = psycopg2.connect("dbname=" + dbname)
