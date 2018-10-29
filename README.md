@@ -46,13 +46,6 @@ Checking synchronization progress
 
 	SELECT max(block) FROM ethtxs;
 
-Additional info:
-
-	1 almost all logs are commented in the script for increasing performance
-	
-	2 Script suggest that geth node is running via user ‘geth’
-	
-	3 ethindexer.service can be used for creating service
 
 
 License
