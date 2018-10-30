@@ -18,39 +18,50 @@ pip3 install web3
 pip3 install psycopg2
 ```
 
-Create Postgres user for <yourusername>:
-	
-	createuser -s <yourusername>
-	
-In this example we create superuser.You can use your own grants.
+Create Postgres user for '<yourusername>':
 
-Create a table in Postgres:
+```
+createuser -s <yourusername>
+```
+	
+In this example we create superuser. You can use your own grants.
 
+Create table in Postgres:
+
+```
 	psql -f create_table.sql <yourDB>
+```
 
-`<yourusername>` - user who will run service.
-`<yourDB>` - target DataBase. Change the DB name in two strings in the script file.
+`<yourusername>` — user who will run service.
+
+`<yourDB>` — target DataBase. Change the DB name in two strings in the script file.
 
 Run the script.
 
-	python3.6 you/path/to/script/ethsync.py <yourDB>
+```
+python3.6 you/path/to/script/ethsync.py <yourDB>
+```
 
-Or use ethstorage.service to run as a deamon. Change string 
+Or use ethstorage.service to run as a deamon. Change string:
 
-	ExecStart=/usr/bin/python3.6 you/path/to/script/ethsync.py <yourDB>
+```
+ExecStart=/usr/bin/python3.6 you/path/to/script/ethsync.py <yourDB>
+```
 
 Put the file to	/lib/systemd/system. Then
 
-	systemctl daemon-reload
-	systemctl start ethstorage.service
+```
+systemctl daemon-reload
+systemctl start ethstorage.service
+```
 
-Checking synchronization progress
+Checking synchronization progress:
 
-	SELECT max(block) FROM ethtxs;
+```
+SELECT max(block) FROM ethtxs;
+```
 
-
-
-License
+## License
 Copyright © 2017-2018 ADAMANT TECH LABS LP 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
