@@ -29,7 +29,7 @@ In this example we create superuser. You can use your own grants.
 Create table in Postgres:
 
 ```
-	psql -f create_table.sql <yourDB>
+psql -f create_table.sql <yourDB>
 ```
 
 `<yourusername>` — user who will run service.
