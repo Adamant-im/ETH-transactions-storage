@@ -13,8 +13,10 @@ Postgresql 10.5
 ## Installation
 Import wheels for python:
 
-`pip3 install web3`
-`pip3 install psycopg2`
+```
+pip3 install web3
+pip3 install psycopg2
+```
 
 Create Postgres user for <yourusername>:
 	
