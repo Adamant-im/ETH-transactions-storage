@@ -1,21 +1,20 @@
 # ETH-transactions-storage
-Able to store ETH transactions in separate DB
+Indexer for getting transaction list for ETH address.
 
-Main purpose.
-You can store all ethereum transactions in one-query place. it is possible to obtain a history of every user|wallet in just a move.
+## Description
+Standard Ethereum node lacks functionality to get transaction list for ETH address.
+This project allows to run indexer over Ethereum DB and store store all transactions in one-query place. Iit is possible to obtain a history of every user|wallet in just a move, like Etherscan does.
 
-
-Prerequisites
+## Prerequisites
 geth (with currently synchronized chain)
 Python 3.6
 Postgresql 10.5
 
-
+## Installation
 Import wheels for python:
 
-	pip3 install web3
-	pip3 install psycopg2
-
+``` pip3 install web3
+``` pip3 install psycopg2
 
 <yourusername> - user who will run service.
 <yourDB> - target DataBase. Change the DB name in two strings in the script file.
