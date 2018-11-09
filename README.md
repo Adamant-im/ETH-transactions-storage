@@ -34,7 +34,7 @@ psql -f create_table.sql <yourDB>
 
 `<yourusername>` — user who will run service.
 
-`<yourDB>` — target DataBase. Change the DB name in two strings in the script file.
+`<yourDB>` — target DataBase.
 
 Run the script.
 
