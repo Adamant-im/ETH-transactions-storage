@@ -1,28 +1,48 @@
+# Indexer for Ethereum to get transaction list by ETH address
+# https://github.com/Adamant-im/ETH-transactions-storage
+# By Artem Brunov, Aleksei Lebedev. (c) ADAMANT TECH LABS
+# v. 1.1
+
 from web3 import Web3
 import psycopg2
 import time
 import sys
 
+# Get postgre database name
 if len(sys.argv) < 2:
-    print('Please add DB name as an argument')
+    print('Add postgre database name as an argument')
     exit()
 
 dbname = sys.argv[1]
 
-web3 = Web3()
+# Connect to geth node
+#web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
+
+# Or connect to parity node
+web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/io.parity.ethereum/jsonrpc.ipc"))
+
+# Start logger
+logger = logging.getLogger("EthIndexerLog")
+logger.setLevel(logging.INFO)
+lfh = logging.FileHandler("/var/log/ethindexer.log")
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+lfh.setFormatter(formatter)
+logger.addHandler(lfh)
 
 try:
     conn = psycopg2.connect("dbname=" + dbname)
     conn.autocommit = True
-    print("INFO: Initial connection to the database")
+    logger.info("Connected to the database")
 except:
-    print("ERROR: Connection failed (initial)")
+    logger.info("Unable to connect to database")
 
+# Delete last block as it may be not imparted in full
 cur = conn.cursor()
 cur.execute('DELETE FROM public.ethtxs WHERE block = (SELECT Max(block) from public.ethtxs)')
 cur.close()
 conn.close()
 
+# Adds all transactions from Ethereum block
 def insertion(blockid, tr):
     time = web3.eth.getBlock(blockid)['timestamp']
     for x in range(0, tr):
@@ -30,6 +50,7 @@ def insertion(blockid, tr):
         txhash = trans['hash']
         value = trans['value']
         inputinfo = trans['input']
+        # Check if transaction is a contract transfer
         if (value == 0 and not inputinfo.startswith('0xa9059cbb')):
             continue
         fr = trans['from']
@@ -38,6 +59,7 @@ def insertion(blockid, tr):
         gas = web3.eth.getTransactionReceipt(trans['hash'])['gasUsed']
         contract_to = ''
         contract_value = ''
+        # Check if transaction is a contract transfer
         if inputinfo.startswith('0xa9059cbb'):
             contract_to = inputinfo[10:-64]
             contract_value = inputinfo[74:]
@@ -45,29 +67,32 @@ def insertion(blockid, tr):
             'INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (time, fr, to, value, gas, gasprice, blockid, txhash, contract_to, contract_value))
 
-
+# Fetch all of new (not in index) Ethereum blocks and add transactions to index
 while True:
     try:
         conn = psycopg2.connect("dbname=" + dbname)
         conn.autocommit = True
     except:
-        print("ERROR: Connection failed")
+        logger.info("Unable to connect to database")
 
     cur = conn.cursor()
 
     cur.execute('SELECT Max(block) from public.ethtxs')
     maxblockindb = cur.fetchone()[0]
+    # On first start, we index transactions from a block number you indicate. 46146 is a sample.
     if maxblockindb is None:
         maxblockindb = 46146
 
     endblock = int(web3.eth.blockNumber)
 
-    print('INFO: Max block in db: ' + str(maxblockindb) + '; in chain: ' + str(endblock))
+    logger.info('Current best block in index: ' + str(maxblockindb) + '; in Ethereum chain: ' + str(endblock))
 
     for block in range(maxblockindb + 1, endblock):
         transactions = web3.eth.getBlockTransactionCount(block)
         if transactions > 0:
             insertion(block, transactions)
+        else:
+            logger.info('Block ' + str(block) + ' does not contain transactions')
     cur.close()
     conn.close()
-    time.sleep(30)
+    time.sleep(20)
