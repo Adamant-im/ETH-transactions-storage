@@ -1,8 +1,10 @@
 # Indexer for Ethereum to get transaction list by ETH address
-Known Ethereum nodes lack functionality to get transaction list for ETH address (account). Indexer allows to explore transactions by Ethereum address and obtain a history of every user|wallet in just a move, like Etherscan does.
+Known Ethereum nodes lack functionality to get transaction list for ETH address (account). This Indexer allows to explore transactions by Ethereum address and obtain a history of any user|wallet in just a move, like Etherscan does. 
+
 Indexer is written in Python. It works as a service in background:
 - connects to Ethereum node (works well with geth or parity, others are not tested)
 - stores all transactions in Postgres database
+- provides data for API to get transactions by address
 
 ## Stored information
 All indexed transactions includes (database field names shown):
@@ -17,10 +19,29 @@ All indexed transactions includes (database field names shown):
 - `contract_to` indicates recepient's Ethereum address in case of contract
 - `contract_value` stores `value` of ERC20 transaction in its tokens
 
+An example:
+
+```
+{
+  "time": 1576008898,
+  "txfrom": "0x6B924750e56A674A2Ad01FBF09C7c9012f16f094",
+  "txto": "0x1143E097e134F3407eF6B088672CCECE9A4f8CDD",
+  "gas": 21000,
+  "gasprice": 2500000000,
+  "block": 9084957,
+  "txhash": "\\xcf56a031dfc89f5a3686cd441ea97ae96a66f5809a4c8c1b370485a04fb37e0e",
+  "value": 1200000000000000,
+  "contract_to": "",
+  "contract_value": ""
+}
+```
+
+Refers to transaction 0xcf56a031dfc89f5a3686cd441ea97ae96a66f5809a4c8c1b370485a04fb37e0e.
+
 ## Details and configuration
 Indexer script `ethsync.py` is recommended to be run as a background service. Log is stored in `/var/log/ethindexer.log`.
 
-By default, indexer connects to parity Ethereum node. Check these lines for correct path to ipc before you start the service. You can also connect to other Ethereum node.
+By default, Indexer connects to parity Ethereum node. Check these lines for correct path to `ipc` before you start the service. You can also connect to other Ethereum node like geth.
 
 ``` python
 # Connect to geth node
@@ -30,7 +51,7 @@ By default, indexer connects to parity Ethereum node. Check these lines for corr
 web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/io.parity.ethereum/jsonrpc.ipc"))
 ```
 
-Indexer may fetch transactions not from the beginnig, but from special block number. It will speed up indexing process and reduce database size. If you wand to indicate starting Ethereum block number, set it instead of default `46146` value.
+Indexer can fetch transactions not from the beginnig, but from special block number. It will speed up indexing process and reduce database size. If you want to indicate starting Ethereum block number, set it instead of default `46146` value.
 
 ``` python
     if maxblockindb is None:
@@ -39,8 +60,15 @@ Indexer may fetch transactions not from the beginnig, but from special block num
 
 For a reference, index size starting from 5,555,555 block to 9,000,000 is about 190 GB.
 
+First Indexer will store transactions starting from block you set. It will take a time. After that, it will check for new blocks every 20 seconds and update the index. If you want to change the interval, change the line:
+
+```
+    time.sleep(20)
+```
+
 ## Ethereum Indexer's API
-To get Ethereum transactions by address, Postgrest is used. It provides RESTful API to Postgre index database.
+To get Ethereum transactions by address, Postgrest is used. It provides RESTful API to Postgres index database.
+
 After index is created, you can use requests like
 
 ```
@@ -60,8 +88,8 @@ The request will show 25 last transactions for Ethereum address 0x6b924750e56a67
 
 ## Installation
 
-### Node
-Make sure your Ethereum node is installed and fully synced. In case of parity, you can check its API and best block height with the command:
+### Ethereum Node
+Make sure your Ethereum node is installed and is fully synced. In case of parity, you can check its API and best block height with the command:
 
 ```
 curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
@@ -75,7 +103,7 @@ pip3 install psycopg2
 ```
 
 ### PostgreSQL
-Install Postgre. Create Postgres user '<yourusername>':
+Install Postgre. Create Postgres user:
 
 ```
 createuser -s <yourusername>
@@ -83,17 +111,17 @@ createuser -s <yourusername>
 	
 (As example we create superuser. You can use your own grants.)
 
-Create table using sql script in the repository:
+Create table using sql script `create_table.sql`:
 
 ```
 psql -f create_table.sql <yourDB>
 ```
 
-`<yourusername>` — user who will run service. `<yourDB>` — target Postres database.
+`<yourusername>` — user who will run service. `<yourDB>` — target Postgres database.
 
 ### Ethereum transaction Indexer
 
-`ethsync.py` in the repository is a script which makes Ethereum transactions index to get transactions by ETH address using API. For configuration, see [#Details-and-configuration].
+`ethsync.py` is a script which makes Ethereum transactions index to get transactions by ETH address using API. For configuration, see [Details and configuration](#details-and-configuration).
 
 Run the Indexer.
 
@@ -101,7 +129,7 @@ Run the Indexer.
 python3.6 you/path/to/script/ethsync.py <yourDB>
 ```
 
-Or use ethstorage.service to run as a deamon (recommended). You should correct the line:
+Or use `ethstorage.service` to run as a deamon (recommended). You should correct the line:
 
 ```
 ExecStart=/usr/bin/python3.6 you/path/to/script/ethsync.py <yourDB>
@@ -124,7 +152,7 @@ And compare to Ethereum node's best block.
 
 ### Transaction API with Postgrest
 Install and [configure](https://postgrest.org/en/v5.2/install.html#configuration) Postgrest. 
-Here is an example for running API for user `api_user` connected to `index` database on 3000 port:
+Here is an example to run API for user `api_user` connected to `index` database on 3000 port:
 
 ```
 db-uri = "postgres://api_user@/index"
@@ -154,7 +182,7 @@ location /aval {
 
 ```
 
-That way two endpoints will be available:
+This way two endpoints will be available:
 - `/ethtxs` used to fetch Ethereum transactions by address
 - `/aval` returns status of service 
 
