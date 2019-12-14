@@ -7,6 +7,7 @@ from web3 import Web3
 import psycopg2
 import time
 import sys
+import logging
 
 # Get postgre database name
 if len(sys.argv) < 2:
@@ -34,7 +35,7 @@ try:
     conn.autocommit = True
     logger.info("Connected to the database")
 except:
-    logger.info("Unable to connect to database")
+    logger.error("Unable to connect to database")
 
 # Delete last block as it may be not imparted in full
 cur = conn.cursor()
@@ -73,7 +74,7 @@ while True:
         conn = psycopg2.connect("dbname=" + dbname)
         conn.autocommit = True
     except:
-        logger.info("Unable to connect to database")
+        logger.error("Unable to connect to database")
 
     cur = conn.cursor()
 
