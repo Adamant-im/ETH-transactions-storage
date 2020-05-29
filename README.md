@@ -186,15 +186,30 @@ This way two endpoints will be available:
 - `/ethtxs` used to fetch Ethereum transactions by address
 - `/aval` returns status of service 
 
+Endpoint `aval` is a table with `status` field just to check API aviablity. Though it is not necessary, you can add it by creating `aval` table:
+
+```
+CREATE TABLE public.aval
+(
+    "status" INTEGER
+)
+
+TABLESPACE pg_default;
+
+INSERT INTO public.aval(status) VALUES (1);
+
+```
+
+
 Example:
 ```
 https://ethnode1.adamant.im/ethtxs?and=(contract_to.eq.,or(txfrom.eq.0x6b924750e56a674a2ad01fbf09c7c9012f16f094,txto.eq.0x6b924750e56a674a2ad01fbf09c7c9012f16f094))&order=time.desc&limit=25
 
 ```
 
-Example:
+Zabbix API aviability trigger example:
 ```
-https://ethnode1.adamant.im/aval
+{API for Ethereum transactions:system.run["curl -s https://ethnode1.adamant.im/aval | jq .[].status"].last()}<>1
 
 ```
 
