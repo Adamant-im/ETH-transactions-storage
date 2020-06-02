@@ -1,15 +1,17 @@
+CREATE EXTENSION citext;
+
 CREATE TABLE public.ethtxs
 (
     "time" integer,
-    txfrom text COLLATE pg_catalog."default",
-    txto text COLLATE pg_catalog."default",
+    txfrom citext COLLATE pg_catalog."default",
+    txto citext COLLATE pg_catalog."default",
     gas bigint,
     gasprice bigint,
     block integer,
-    txhash text COLLATE pg_catalog."default",
+    txhash citext COLLATE pg_catalog."default",
     value numeric,
-    contract_to text COLLATE pg_catalog."default",
-    contract_value text COLLATE pg_catalog."default"
+    contract_to citext COLLATE pg_catalog."default",
+    contract_value citext COLLATE pg_catalog."default"
 )
 
 TABLESPACE pg_default;
