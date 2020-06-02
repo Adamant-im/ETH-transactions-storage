@@ -108,8 +108,16 @@ Install Postgre. Create Postgres user:
 ```
 createuser -s <yourusername>
 ```
+
+`<yourusername>` — user who will run service.
 	
 (As example we create superuser. You can use your own grants.)
+
+Create database for Ethereum trasaction index:
+
+```
+CREATE DATABASE index;
+```
 
 Create table using sql script `create_table.sql`:
 
@@ -117,7 +125,11 @@ Create table using sql script `create_table.sql`:
 psql -f create_table.sql <yourDB>
 ```
 
-`<yourusername>` — user who will run service. `<yourDB>` — target Postgres database.
+`<yourDB>` — target Postgres database.
+
+Note, for case insensitive comparisons we use `citex` data type instead of `text`.
+
+Remember to grant priveleges to database and tables for users you need.
 
 ### Ethereum transaction Indexer
 
