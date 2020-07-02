@@ -213,9 +213,23 @@ INSERT INTO public.aval(status) VALUES (1);
 ```
 
 
-Example:
+## Examples
+
+Get last 25 Ethereum transactions without ERC-20 transactions for address 0x1143e097e134f3407ef6b088672ccece9a4f8cdd:
 ```
-https://ethnode1.adamant.im/ethtxs?and=(contract_to.eq.,or(txfrom.eq.0x6b924750e56a674a2ad01fbf09c7c9012f16f094,txto.eq.0x6b924750e56a674a2ad01fbf09c7c9012f16f094))&order=time.desc&limit=25
+https://ethnode1.adamant.im/ethtxs?and=(contract_to.eq.,or(txfrom.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd,txto.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd))&order=time.desc&limit=25
+
+```
+
+Get last 25 ERC-20 transactions without Ethereum transactions for address 0x1143e097e134f3407ef6b088672ccece9a4f8cdd:
+```
+https://ethnode1.adamant.im/ethtxs?and=(contract_to.neq.,or(txfrom.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd,txto.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd))&order=time.desc&limit=25
+
+```
+
+Get last 25 transactions for both ERC-20 and Ethereum for address 0x1143e097e134f3407ef6b088672ccece9a4f8cdd:
+```
+https://ethnode1.adamant.im/ethtxs?and=(or(txfrom.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd,txto.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd))&order=time.desc&limit=25
 
 ```
 
