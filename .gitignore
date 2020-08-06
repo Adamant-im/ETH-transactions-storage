@@ -1,2 +1,6 @@
 .idea
 secrets.py
+ethindexer.log
+install
+3.5.6
+__pycache__
