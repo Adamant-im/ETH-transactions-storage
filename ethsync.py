@@ -1,7 +1,9 @@
 # Indexer for Ethereum to get transaction list by ETH address
 # https://github.com/Adamant-im/ETH-transactions-storage
-# By Artem Brunov, Aleksei Lebedev. (c) ADAMANT TECH LABS
-# v. 1.1
+# By Artem Brunov, Aleksei Lebedev
+# 2020-2021 ADAMANT Foundation
+# 2017-2020 ADAMANT TECH LABS LP
+# v1.2
 
 from web3 import Web3
 import psycopg2
@@ -19,8 +21,8 @@ dbname = sys.argv[1]
 # Connect to geth node
 #web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
 
-# Or connect to parity node
-web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/io.parity.ethereum/jsonrpc.ipc"))
+# Or connect to openethereum node
+web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/openethereum/jsonrpc.ipc"))
 
 # Start logger
 logger = logging.getLogger("EthIndexerLog")
@@ -64,6 +66,12 @@ def insertion(blockid, tr):
         if inputinfo.startswith('0xa9059cbb'):
             contract_to = inputinfo[10:-64]
             contract_value = inputinfo[74:]
+        # Correct contract transfer transaction represents '0x' + 4 bytes 'a9059cbb' + 32 bytes (64 chars) for contract address and 32 bytes for its value
+        # Some buggy txs can break up Indexer, so we'll filter it
+        if len(contract_to) > 128:
+            logger.info('Skipping ' + str(txhash) + ' tx. Incorrect contract_to length: ' + str(len(contract_to)))
+            contract_to = ''
+            contract_value = ''
         cur.execute(
             'INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (time, fr, to, value, gas, gasprice, blockid, txhash, contract_to, contract_value))
@@ -80,9 +88,9 @@ while True:
 
     cur.execute('SELECT Max(block) from public.ethtxs')
     maxblockindb = cur.fetchone()[0]
-    # On first start, we index transactions from a block number you indicate. 46146 is a sample.
+    # On first start, we index transactions from a block number you indicate. 10000000 is a sample.
     if maxblockindb is None:
-        maxblockindb = 46146
+        maxblockindb = 10000000
 
     endblock = int(web3.eth.blockNumber)
 

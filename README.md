@@ -1,23 +1,31 @@
 # Indexer for Ethereum to get transaction list by ETH address
-Known Ethereum nodes lack functionality to get transaction list for ETH address (account). This Indexer allows to explore transactions by Ethereum address and obtain a history of any user|wallet in just a move, like Etherscan does. 
+
+Known Ethereum nodes lack functionality to get transaction list for ETH address (account). This Indexer allows to explore ETH and ERC20 transactions by Ethereum address and obtain a history of any user|wallet in just a move, like Etherscan does.
 
 Indexer is written in Python. It works as a service in background:
-- connects to Ethereum node (works well with geth or parity, others are not tested)
+
+- connects to Ethereum node (works well with openethereum, geth or parity, others are not tested)
 - stores all transactions in Postgres database
-- provides data for API to get transactions by address
+- provides data for API to get transactions by address with postgrest
+
+We've also found this [Indexer fork for mongodb](https://github.com/jin10086/ETH-transactions-storage), but didn't test it.
 
 ## Stored information
+
 All indexed transactions includes (database field names shown):
-- `time` is a transaction's `timestamp`
-- `fr` indicates `from` (sender) Ethereum address
-- `to` indicates `to` (recepient) Ethereum address
-- `value` stores `value` of ETH transaction
+
+- `time` is a transaction's timestamp
+- `txfrom` sender's Ethereum address
+- `txto` recipient's Ethereum address
+- `value` stores amount of ETH transferred
 - `gas` indicates `gasUsed`
 - `gasprice` indicates `gasPrice`
-- `blockid` is a transaction's block number
-- `txhash` is a transaction's `hash`
-- `contract_to` indicates recepient's Ethereum address in case of contract
-- `contract_value` stores `value` of ERC20 transaction in its tokens
+- `block` is a transaction's block number
+- `txhash` is a transaction's hash
+- `contract_to` indicates recipient's Ethereum address in case of contract
+- `contract_value` stores amount of ERC20 transaction in its tokens
+
+To reduce storage requirements, Indexer stores only token transfer ERC20 transaction, started with `0xa9059cbb` in raw tx input.
 
 An example:
 
@@ -38,35 +46,8 @@ An example:
 
 Refers to transaction 0xcf56a031dfc89f5a3686cd441ea97ae96a66f5809a4c8c1b370485a04fb37e0e.
 
-## Details and configuration
-Indexer script `ethsync.py` is recommended to be run as a background service. Log is stored in `/var/log/ethindexer.log`.
-
-By default, Indexer connects to parity Ethereum node. Check these lines for correct path to `ipc` before you start the service. You can also connect to other Ethereum node like geth.
-
-``` python
-# Connect to geth node
-#web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
-
-# Or connect to parity node
-web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/io.parity.ethereum/jsonrpc.ipc"))
-```
-
-Indexer can fetch transactions not from the beginnig, but from special block number. It will speed up indexing process and reduce database size. If you want to indicate starting Ethereum block number, set it instead of default `46146` value.
-
-``` python
-    if maxblockindb is None:
-        maxblockindb = 46146
-```
-
-For a reference, index size starting from 5,555,555 block to 9,000,000 is about 190 GB.
-
-First Indexer will store transactions starting from block you set. It will take a time. After that, it will check for new blocks every 20 seconds and update the index. If you want to change the interval, change the line:
-
-```
-    time.sleep(20)
-```
-
 ## Ethereum Indexer's API
+
 To get Ethereum transactions by address, Postgrest is used. It provides RESTful API to Postgres index database.
 
 After index is created, you can use requests like
@@ -77,24 +58,28 @@ curl -k -X GET "http://localhost:3000/?and=(contract_to.eq.,or(txfrom.eq.0x6b924
 
 The request will show 25 last transactions for Ethereum address 0x6b924750e56a674a2ad01fbf09c7c9012f16f094, ordered by timestamp. For API reference, see [Postgrest](https://postgrest.org/en/v5.2/api.html).
 
-# Setup
+# Ethereum Indexer Setup
 
 ## Prerequisites
-- geth or parity (with currently synchronized chain)
+
+- geth or openethereum (with currently synchronized chain)
 - Python 3.6
 - Postgresql 10.5
-- Postgrest
-- nginx (in case of public API)
+- Postgrest for API
+- nginx or other web server (in case of public API)
 
 ## Installation
 
 ### Ethereum Node
-Make sure your Ethereum node is installed and is fully synced. In case of parity, you can check its API and best block height with the command:
+
+Make sure your Ethereum node is installed and is fully synced. In case of openethereum, you can check its API and best block height with the command:
 
 ```
 curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
 ```
+
 ### Python modules
+
 Install Python. Install python modules:
 
 ```
@@ -103,17 +88,18 @@ pip3 install psycopg2
 ```
 
 ### PostgreSQL
-Install Postgre. Create Postgres user:
+
+Install Postgres. Create Postgres user:
 
 ```
 createuser -s <yourusername>
 ```
 
 `<yourusername>` — user who will run service.
-	
+
 (As example we create superuser. You can use your own grants.)
 
-Create database for Ethereum trasaction index:
+Create database for Ethereum transaction index:
 
 ```
 CREATE DATABASE index;
@@ -129,29 +115,60 @@ psql -f create_table.sql <yourDB>
 
 Note, for case insensitive comparisons we use `citex` data type instead of `text`.
 
-Remember to grant priveleges to database and tables for users you need.
+Remember to grant privileges to database and tables for users you need.
 
 ### Ethereum transaction Indexer
 
-`ethsync.py` is a script which makes Ethereum transactions index to get transactions by ETH address using API. For configuration, see [Details and configuration](#details-and-configuration).
+`ethsync.py` is a script which makes Ethereum transactions index to get transactions by ETH address using API.
 
-Run the Indexer.
+Log is stored in `/var/log/ethindexer.log`.
+
+By default, Indexer connects to [Openethereum](https://github.com/openethereum/openethereum) node. You can also connect to other Ethereum node like geth:
+
+``` python
+# Connect to geth node
+#web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
+
+# Or connect to openethereum node
+web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/openethereum/jsonrpc.ipc"))
+```
+
+Indexer can fetch transactions not from the beginning, but from special block number. It will speed up indexing process and reduce database size. If you want to indicate starting Ethereum block number, set it instead of default `10000000` value.
+
+``` python
+    if maxblockindb is None:
+        maxblockindb = 10000000
+```
+
+For a reference:
+
+- index size starting from 5,555,555 block to 9,000,000 is about 190 GB.
+- index size starting from 11,000,000 block to 12,230,000 is about 83 GB.
+
+First Indexer will store transactions starting from block you set. It will take a time. After that, it will check for new blocks every 20 seconds and update the index. If you want to change the interval, change the line:
+
+```
+    time.sleep(20)
+```
+
+To run the Indexer:
 
 ```
 python3.6 you/path/to/script/ethsync.py <yourDB>
 ```
 
-Or use `ethstorage.service` to run as a deamon (recommended). You should correct the line:
+We recommend to run Indexer script `ethsync.py` as a background service. See `ethstorage.service` as an example. Before run, update the line:
 
 ```
 ExecStart=/usr/bin/python3.6 you/path/to/script/ethsync.py <yourDB>
 ```
 
-Put the file to	`/lib/systemd/system`. Then register a service:
+Put the file to `/lib/systemd/system`. Then register a service:
 
 ```
 systemctl daemon-reload
 systemctl start ethstorage.service
+systemctl enable ethstorage.service
 ```
 
 Note, indexing takes time. To check indexing process, get the last indexed block:
@@ -163,7 +180,8 @@ psql -d index -c 'SELECT MAX(block) FROM ethtxs;'
 And compare to Ethereum node's best block.
 
 ### Transaction API with Postgrest
-Install and [configure](https://postgrest.org/en/v5.2/install.html#configuration) Postgrest. 
+
+Install and [configure](https://postgrest.org/en/v5.2/install.html#configuration) Postgrest.
 Here is an example to run API for user `api_user` connected to `index` database on 3000 port:
 
 ```
@@ -182,7 +200,8 @@ Make sure you add Postgrest in crontab for autostart on reboot:
 ```
   
 ## Make Indexer's API public
-If you need to provide public API, use any webserver like nginx and setup proxy to Postgrest port in config:
+
+If you need to provide public API, use any web server like nginx and setup proxy to Postgrest port in config:
 
 ```
 location /ethtxs {
@@ -195,10 +214,11 @@ location /aval {
 ```
 
 This way two endpoints will be available:
-- `/ethtxs` used to fetch Ethereum transactions by address
-- `/aval` returns status of service 
 
-Endpoint `aval` is a table with `status` field just to check API aviablity. Though it is not necessary, you can add it by creating `aval` table:
+- `/ethtxs` used to fetch Ethereum transactions by address
+- `/aval` returns status of service
+
+Endpoint `aval` is a table with `status` field just to check API availability. Though it is not necessary, you can add it by creating `aval` table:
 
 ```
 CREATE TABLE public.aval
@@ -212,37 +232,41 @@ INSERT INTO public.aval(status) VALUES (1);
 
 ```
 
-
-## Examples
+## API request examples
 
 Get last 25 Ethereum transactions without ERC-20 transactions for address 0x1143e097e134f3407ef6b088672ccece9a4f8cdd:
+
 ```
 https://ethnode1.adamant.im/ethtxs?and=(contract_to.eq.,or(txfrom.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd,txto.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd))&order=time.desc&limit=25
 
 ```
 
 Get last 25 ERC-20 transactions without Ethereum transactions for address 0x1143e097e134f3407ef6b088672ccece9a4f8cdd:
+
 ```
 https://ethnode1.adamant.im/ethtxs?and=(contract_to.neq.,or(txfrom.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd,txto.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd))&order=time.desc&limit=25
 
 ```
 
 Get last 25 transactions for both ERC-20 and Ethereum for address 0x1143e097e134f3407ef6b088672ccece9a4f8cdd:
+
 ```
 https://ethnode1.adamant.im/ethtxs?and=(or(txfrom.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd,txto.eq.0x1143e097e134f3407ef6b088672ccece9a4f8cdd))&order=time.desc&limit=25
 
 ```
 
-Zabbix API aviability trigger example:
+Zabbix API availability trigger example:
+
 ```
 {API for Ethereum transactions:system.run["curl -s https://ethnode1.adamant.im/aval | jq .[].status"].last()}<>1
 
 ```
 
 # License
-Copyright © 2017-2019 ADAMANT TECH LABS LP
+
+Copyright © 2020-2021 ADAMANT Foundation
+Copyright © 2017-2020 ADAMANT TECH LABS LP
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with this program. If not, see http://www.gnu.org/licenses/.
-
