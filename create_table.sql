@@ -14,6 +14,11 @@ CREATE TABLE public.ethtxs
     contract_value citext COLLATE pg_catalog."default"
 )
 
+CREATE TABLE public.aval
+(
+    "status" INTEGER
+)
+
 TABLESPACE pg_default;
 
 CREATE INDEX block_index
@@ -35,3 +40,10 @@ CREATE INDEX txto_index
     ON public.ethtxs USING btree
     (txto COLLATE pg_catalog."default")
     TABLESPACE pg_default;
+
+CREATE VIEW max_block as 
+    SELECT
+        MAX(block)
+    FROM public.ethtxs;
+
+INSERT INTO public.aval(status) VALUES (1);

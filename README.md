@@ -115,7 +115,16 @@ psql -f create_table.sql <yourDB>
 
 Note, for case insensitive comparisons we use `citex` data type instead of `text`.
 
-Remember to grant privileges to database and tables for users you need.
+Remember to grant privileges to psql database and tables for users you need. Example:
+
+```
+\c index
+GRANT ALL ON ethtxs TO api_user;
+GRANT ALL ON aval TO api_user;
+GRANT ALL ON max_block TO api_user;
+GRANT ALL PRIVILEGES ON DATABASE index TO api_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO api_user;
+```
 
 ### Ethereum transaction Indexer
 
@@ -210,27 +219,17 @@ location /ethtxs {
 location /aval {
     proxy_pass http://127.0.0.1:3000;
 }
+location /max_block {
+    proxy_pass http://127.0.0.1:3000;
+}
 
 ```
 
 This way two endpoints will be available:
 
 - `/ethtxs` used to fetch Ethereum transactions by address
-- `/aval` returns status of service
-
-Endpoint `aval` is a table with `status` field just to check API availability. Though it is not necessary, you can add it by creating `aval` table:
-
-```
-CREATE TABLE public.aval
-(
-    "status" INTEGER
-)
-
-TABLESPACE pg_default;
-
-INSERT INTO public.aval(status) VALUES (1);
-
-```
+- `/aval` returns status of service. Endpoint `aval` is a table with `status` field just to check API availability.
+- `/max_block` returns max Ethereum indexed block
 
 ## API request examples
 
@@ -255,11 +254,12 @@ https://ethnode1.adamant.im/ethtxs?and=(or(txfrom.eq.0x1143e097e134f3407ef6b0886
 
 ```
 
-Zabbix API availability trigger example:
+Zabbix API availability trigger examples:
 
 ```
 {API for Ethereum transactions:system.run["curl -s https://ethnode1.adamant.im/aval | jq .[].status"].last()}<>1
 
+{API for Ethereum transactions:system.run["curl -s --connect-timeout 7 https://ethnode1.adamant.im/max_block | jq .[].max"].change()}<1
 ```
 
 # License
