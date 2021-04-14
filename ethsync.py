@@ -30,18 +30,18 @@ logger = logging.getLogger("EthIndexerLog")
 logger.setLevel(logging.INFO)
 
 # File logger
-#lfh = logging.FileHandler("/var/log/ethindexer.log")
-#formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-#lfh.setFormatter(formatter)
-#logger.addHandler(lfh)
+lfh = logging.FileHandler("/var/log/ethindexer.log")
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+lfh.setFormatter(formatter)
+logger.addHandler(lfh)
 
 # Systemd logger, if we want to user journalctl logs
 # Install systemd-python and 
 # decomment "#from systemd.journal import JournalHandler" up
-ljc = JournalHandler()
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-ljc.setFormatter(formatter)
-logger.addHandler(ljc)
+#ljc = JournalHandler()
+#formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+#ljc.setFormatter(formatter)
+#logger.addHandler(ljc)
 
 try:
     conn = psycopg2.connect("dbname=" + dbname)
