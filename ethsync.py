@@ -10,6 +10,7 @@ import psycopg2
 import time
 import sys
 import logging
+#from systemd.journal import JournalHandler
 
 # Get postgre database name
 if len(sys.argv) < 2:
@@ -27,10 +28,20 @@ web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/openethereum/jsonrpc.ipc
 # Start logger
 logger = logging.getLogger("EthIndexerLog")
 logger.setLevel(logging.INFO)
+
+# File logger
 lfh = logging.FileHandler("/var/log/ethindexer.log")
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 lfh.setFormatter(formatter)
 logger.addHandler(lfh)
+
+# Systemd logger, if we want to user journalctl logs
+# Install systemd-python and 
+# decomment "#from systemd.journal import JournalHandler" up
+#ljc = JournalHandler()
+#formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+#ljc.setFormatter(formatter)
+#logger.addHandler(ljc)
 
 try:
     conn = psycopg2.connect("dbname=" + dbname)
@@ -45,11 +56,23 @@ cur.execute('DELETE FROM public.ethtxs WHERE block = (SELECT Max(block) from pub
 cur.close()
 conn.close()
 
+# Wait for the node to be in sync before indexing
+logger.info("Waiting Ethereum node to be in sync...")
+
+while web3.eth.syncing != False:
+    # Change with the time, in second, do you want to wait
+    # before cheking again, default is 5 minutes
+    time.sleep(300)
+
+logger.info("Ethereum node is synced!")
+
 # Adds all transactions from Ethereum block
 def insertion(blockid, tr):
     time = web3.eth.getBlock(blockid)['timestamp']
     for x in range(0, tr):
         trans = web3.eth.getTransactionByBlock(blockid, x)
+        # Save also transaction status, should be null if pre byzantium blocks
+        status = bool(web3.eth.get_transaction_receipt(trans['hash']).status)
         txhash = trans['hash']
         value = trans['value']
         inputinfo = trans['input']
@@ -73,8 +96,8 @@ def insertion(blockid, tr):
             contract_to = ''
             contract_value = ''
         cur.execute(
-            'INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
-            (time, fr, to, value, gas, gasprice, blockid, txhash, contract_to, contract_value))
+            'INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            (time, fr, to, value, gas, gasprice, blockid, txhash, contract_to, contract_value, status))
 
 # Fetch all of new (not in index) Ethereum blocks and add transactions to index
 while True:
