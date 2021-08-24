@@ -5,7 +5,9 @@
 # 2017-2020 ADAMANT TECH LABS LP
 # v1.2
 
+from os import environ
 from web3 import Web3
+from web3.middleware import geth_poa_middleware
 import psycopg2
 import time
 import sys
@@ -13,24 +15,43 @@ import logging
 #from systemd.journal import JournalHandler
 
 # Get postgre database name
-if len(sys.argv) < 2:
-    print('Add postgre database name as an argument')
-    exit()
 
-dbname = sys.argv[1]
+dbname = environ.get("DB_NAME")
+startBlock = environ.get("START_BLOCK") or "1"
+confirmationBlocks = environ.get("CONFIRMATIONS_BLOCK") or "0"
+nodeUrl = environ.get("ETH_URL")
+pollingPeriod = environ.get("PERIOD") or "20"
+
+if dbname == None:
+    print('Add postgre database in env var DB_NAME')
+    exit(2)
+
+if nodeUrl == None:
+    print('Add eth url in env var ETH_URL')
+    exit(2)
 
 # Connect to geth node
 #web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
 
 # Or connect to openethereum node
-web3 = Web3(Web3.IPCProvider("/home/parity/.local/share/openethereum/jsonrpc.ipc"))
+if nodeUrl.startswith("http"):
+    web3 = Web3(Web3.HTTPProvider(nodeUrl))
+if nodeUrl.startswith("ws"):
+    web3 = Web3(Web3.WebsocketProvider(nodeUrl)) # "ws://publicnode:8546"
+if web3 == None:
+    web3 = Web3(Web3.IPCProvider(nodeUrl)) # "/home/parity/.local/share/openethereum/jsonrpc.ipc"
+
+
+web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
 # Start logger
-logger = logging.getLogger("EthIndexerLog")
+#logger = logging.getLogger("EthIndexerLog")
+logger = logging.getLogger("eth-sync")
 logger.setLevel(logging.INFO)
 
 # File logger
-lfh = logging.FileHandler("/var/log/ethindexer.log")
+#lfh = logging.FileHandler("/var/log/ethindexer.log")
+lfh = logging.StreamHandler()
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 lfh.setFormatter(formatter)
 logger.addHandler(lfh)
@@ -44,11 +65,13 @@ logger.addHandler(lfh)
 #logger.addHandler(ljc)
 
 try:
-    conn = psycopg2.connect("dbname=" + dbname)
+    logger.info("Trying to connect to "+ dbname)
+    conn = psycopg2.connect(dbname)
     conn.autocommit = True
     logger.info("Connected to the database")
 except:
     logger.error("Unable to connect to database")
+    exit(1)
 
 # Delete last block as it may be not imparted in full
 cur = conn.cursor()
@@ -102,7 +125,7 @@ def insertion(blockid, tr):
 # Fetch all of new (not in index) Ethereum blocks and add transactions to index
 while True:
     try:
-        conn = psycopg2.connect("dbname=" + dbname)
+        conn = psycopg2.connect(dbname)
         conn.autocommit = True
     except:
         logger.error("Unable to connect to database")
@@ -113,9 +136,9 @@ while True:
     maxblockindb = cur.fetchone()[0]
     # On first start, we index transactions from a block number you indicate. 10000000 is a sample.
     if maxblockindb is None:
-        maxblockindb = 10000000
+        maxblockindb = int(startBlock)
 
-    endblock = int(web3.eth.blockNumber)
+    endblock = int(web3.eth.blockNumber) - int(confirmationBlocks)
 
     logger.info('Current best block in index: ' + str(maxblockindb) + '; in Ethereum chain: ' + str(endblock))
 
@@ -127,4 +150,4 @@ while True:
             logger.info('Block ' + str(block) + ' does not contain transactions')
     cur.close()
     conn.close()
-    time.sleep(20)
+    time.sleep(int(pollingPeriod))
