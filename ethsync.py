@@ -92,7 +92,7 @@ def insertion(blockid, tr):
         trans = web3.eth.getTransactionByBlock(blockid, x)
         # Save also transaction status, should be null if pre byzantium blocks
         status = bool(web3.eth.get_transaction_receipt(trans['hash']).status)
-        txhash = trans['hash']
+        txhash = trans['hash'].hex()
         value = trans['value']
         inputinfo = trans['input']
         # Check if transaction is a contract transfer
@@ -143,7 +143,7 @@ while True:
         if transactions > 0:
             insertion(block, transactions)
         else:
-            logger.info('Block ' + str(block) + ' does not contain transactions')
+            logger.debug('Block ' + str(block) + ' does not contain transactions')
     cur.close()
     conn.close()
     time.sleep(int(pollingPeriod))
