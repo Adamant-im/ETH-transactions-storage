@@ -1,6 +1,7 @@
 # Indexer for Ethereum to get transaction list by ETH address
 # https://github.com/Adamant-im/ETH-transactions-storage
-# 2021 ADAMANT Foundation (devs@adamant.im), Francesco Bonanno (mibofra@parrotsec.org), Guénolé de Cadoudal (guenoledc@yahoo.fr)
+# 2021 ADAMANT Foundation (devs@adamant.im), Francesco Bonanno (mibofra@parrotsec.org),
+# Guénolé de Cadoudal (guenoledc@yahoo.fr), Drew Wells (drew.wells00@gmail.com)
 # 2020-2021 ADAMANT Foundation (devs@adamant.im): Aleksei Lebedev
 # 2017-2020 ADAMANT TECH LABS LP (pr@adamant.im): Artem Brunov, Aleksei Lebedev
 # v2.0
