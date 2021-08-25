@@ -2,16 +2,15 @@ version: '3'
 services:
 
   db:
-    image: postgres:10-alpine
+    image: postgres:12
     ports:
       - "5432:5432"
     environment:
       POSTGRES_DB: app_db
       POSTGRES_USER: app_user
       POSTGRES_PASSWORD: postgres!secret
-  # Uncomment this if you want to persist the data.
-  # volumes:
-  #   - "./pgdata:/var/lib/postgresql/data"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
     volumes:
       - ./create_table.sql:/docker-entrypoint-initdb.d/init.sql
 
@@ -27,7 +26,6 @@ services:
     depends_on:
       - db
     
-
   publicnode:
     image: ethereum/client-go:latest
     ports:

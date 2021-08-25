@@ -14,7 +14,7 @@ import sys
 import logging
 #from systemd.journal import JournalHandler
 
-# Get postgre database name
+# Get env variables or set to default
 
 dbname = environ.get("DB_NAME")
 startBlock = environ.get("START_BLOCK") or "1"
@@ -30,17 +30,13 @@ if nodeUrl == None:
     print('Add eth url in env var ETH_URL')
     exit(2)
 
-# Connect to geth node
-#web3 = Web3(Web3.IPCProvider("/home/geth/.ethereum/geth.ipc"))
-
-# Or connect to openethereum node
+# Connect to Ethereum node
 if nodeUrl.startswith("http"):
     web3 = Web3(Web3.HTTPProvider(nodeUrl))
 if nodeUrl.startswith("ws"):
     web3 = Web3(Web3.WebsocketProvider(nodeUrl)) # "ws://publicnode:8546"
 if web3 == None:
     web3 = Web3(Web3.IPCProvider(nodeUrl)) # "/home/parity/.local/share/openethereum/jsonrpc.ipc"
-
 
 web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
@@ -134,7 +130,7 @@ while True:
 
     cur.execute('SELECT Max(block) from public.ethtxs')
     maxblockindb = cur.fetchone()[0]
-    # On first start, we index transactions from a block number you indicate. 10000000 is a sample.
+    # On first start, we index transactions from a block number you indicate
     if maxblockindb is None:
         maxblockindb = int(startBlock)
 
