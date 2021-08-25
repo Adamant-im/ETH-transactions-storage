@@ -1,9 +1,9 @@
 # Indexer for Ethereum to get transaction list by ETH address
 # https://github.com/Adamant-im/ETH-transactions-storage
-# By Artem Brunov, Aleksei Lebedev
-# 2020-2021 ADAMANT Foundation
-# 2017-2020 ADAMANT TECH LABS LP
-# v1.2
+# 2021 ADAMANT Foundation (devs@adamant.im), Francesco Bonanno (mibofra@parrotsec.org), Guénolé de Cadoudal (guenoledc@yahoo.fr)
+# 2020-2021 ADAMANT Foundation (devs@adamant.im): Aleksei Lebedev
+# 2017-2020 ADAMANT TECH LABS LP (pr@adamant.im): Artem Brunov, Aleksei Lebedev
+# v2.0
 
 from os import environ
 from web3 import Web3
@@ -15,7 +15,6 @@ import logging
 #from systemd.journal import JournalHandler
 
 # Get env variables or set to default
-
 dbname = environ.get("DB_NAME")
 startBlock = environ.get("START_BLOCK") or "1"
 confirmationBlocks = environ.get("CONFIRMATIONS_BLOCK") or "0"
