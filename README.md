@@ -262,6 +262,22 @@ Zabbix API availability trigger examples:
 {API for Ethereum transactions:system.run["curl -s --connect-timeout 7 https://ethnode1.adamant.im/max_block | jq .[].max"].change()}<1
 ```
 
+# Dockerized and docker compose
+by Guénolé de Cadoudal (guenoledc@yahoo.fr)
+
+In the `docker-compose.yml` you find a configuration that show how this tool can be embedded in a docker configuration with the following processes:
+- postgres db: to store the indexed data
+- postgREST tool to expose the data as a REST api (see above comments)
+- GETH node in POA mode. Can be Openethereum, or another node, but not tested
+- EthSync tool (this tool)
+
+The EthSync tool accepts the following env variables:
+- DB_NAME: postgres url of the db
+- ETH_URL: eth node url to reach the node. Supports websocket, http and ipc.
+- START_BLOCK: the first block to synchronize from. Default is 1.
+- CONFIRMATIONS_BLOCK: the number of blocks to leave out of the synch from the end. I.e., last block is current `blockNumber - CONFIRMATIONS_BLOCK`. Default is 0.
+- PERIOD: Number of seconds between to synchronization. Default is 20 sec.
+
 # License
 
 Copyright © 2020-2021 ADAMANT Foundation

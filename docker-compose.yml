@@ -1,0 +1,60 @@
+version: '3'
+services:
+
+  db:
+    image: postgres:12
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: postgres!secret
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./create_table.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 5s
+      timeout: 15s
+      retries: 5
+
+
+  postgrest:
+    image: postgrest/postgrest
+    ports:
+      - "3000:3000"
+    environment:
+      PGRST_DB_URI: postgres://app_user:postgres!secret@db:5432/app_db
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: app_user #In production this role should not be the same as the one used for the connection
+      PGRST_OPENAPI_SERVER_PROXY_URI: "http://127.0.0.1:3000"
+    depends_on:
+      - db
+  
+  # this is a test node. Remove it and change the ETH_URL in the eth-storage service
+  publicnode:
+    image: ethereum/client-go:latest
+    ports:
+    - 8545:8545
+    - 8546:8546
+    command: --dev --dev.period 3 --http --http.addr 0.0.0.0 --http.api web3,eth,admin,personal,net --http.vhosts '*' --ws --ws.addr 0.0.0.0 --ws.port 8546 --ws.api web3,eth,admin,personal,net --datadir /tmp --allow-insecure-unlock 
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8545"]
+      interval: 5s
+      timeout: 15s
+      retries: 5
+
+  # Attention
+  eth-storage:
+    build: .
+    environment: 
+      DB_NAME: postgres://app_user:postgres!secret@db:5432/app_db
+      ETH_URL: ws://publicnode:8546
+      START_BLOCK: 1
+      CONFIRMATIONS_BLOCK: 3
+      PERIOD: 5
+    depends_on: 
+      db:
+        condition: service_healthy
+      publicnode:  
+        condition: service_healthy
