@@ -23,6 +23,7 @@ startBlock = environ.get("START_BLOCK") or "1"
 confirmationBlocks = environ.get("CONFIRMATIONS_BLOCK") or "0"
 nodeUrl = environ.get("ETH_URL")
 pollingPeriod = environ.get("PERIOD") or "20"
+logFile = environ.get("LOG_FILE")
 
 if dbname == None:
     print('Add postgre database in env var DB_NAME')
@@ -48,8 +49,10 @@ logger = logging.getLogger("eth-sync")
 logger.setLevel(logging.INFO)
 
 # File logger
-lfh = logging.FileHandler("ethsync.log")
-#lfh = logging.StreamHandler()
+if logFile == None:
+    lfh = logging.StreamHandler()
+else:
+    lfh = logging.FileHandler(logFile)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 lfh.setFormatter(formatter)
 logger.addHandler(lfh)
@@ -78,11 +81,10 @@ cur.close()
 conn.close()
 
 # Wait for the node to be in sync before indexing
-logger.info("Waiting Ethereum node to be in sync…")
-
 while web3.eth.syncing != False:
     # Change with the time, in second, do you want to wait
     # before checking again, default is 5 minutes
+    logger.info("Waiting Ethereum node to be in sync…")
     time.sleep(300)
 
 logger.info("Ethereum node is synced.")

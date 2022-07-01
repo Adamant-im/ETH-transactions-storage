@@ -1,12 +1,18 @@
+# Change ExecStart, Environment, User, Group
+# Copy to /lib/systemd/system/ethsync.service
+
 [Unit]
 Description=EthereumTransactionStorage
 After=syslog.target network.target postgresql.service
 
 [Service]
-ExecStart=/usr/bin/python3.6 you/path/to/script/ethsync.py <yourDB>
+ExecStart=/usr/bin/python3 /home/api_user/ETH-transactions-storage/ethsync.py
+Environment="DB_NAME=index" "ETH_URL=http://127.0.0.1:8545" "START_BLOCK=14600000" "LOG_FILE=/home/api_user/ETH-transactions-storage/ethsync.log"
+User=api_user
+Group=api_user
 TimeoutSec=300
 RestartSec=90
-Restart=always
+Restart=on-failure
 
 [Install]
 WantedBy=default.target
