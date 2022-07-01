@@ -1,10 +1,12 @@
 # Indexer for Ethereum to get transaction list by ETH address
 # https://github.com/Adamant-im/ETH-transactions-storage
-# 2021 ADAMANT Foundation (devs@adamant.im), Francesco Bonanno (mibofra@parrotsec.org),
+
+# Contributions:
+# 2021-2022 ADAMANT Foundation (devs@adamant.im), Francesco Bonanno (mibofra@parrotsec.org),
 # Guénolé de Cadoudal (guenoledc@yahoo.fr), Drew Wells (drew.wells00@gmail.com)
 # 2020-2021 ADAMANT Foundation (devs@adamant.im): Aleksei Lebedev
 # 2017-2020 ADAMANT TECH LABS LP (pr@adamant.im): Artem Brunov, Aleksei Lebedev
-# v2.0
+# v2.1
 
 from os import environ
 from web3 import Web3
@@ -32,11 +34,11 @@ if nodeUrl == None:
 
 # Connect to Ethereum node
 if nodeUrl.startswith("http"):
-    web3 = Web3(Web3.HTTPProvider(nodeUrl))
-if nodeUrl.startswith("ws"):
+    web3 = Web3(Web3.HTTPProvider(nodeUrl)) # "http://publicnode:8545"
+elif nodeUrl.startswith("ws"):
     web3 = Web3(Web3.WebsocketProvider(nodeUrl)) # "ws://publicnode:8546"
-if web3 == None:
-    web3 = Web3(Web3.IPCProvider(nodeUrl)) # "/home/parity/.local/share/openethereum/jsonrpc.ipc"
+else:
+    web3 = Web3(Web3.IPCProvider(nodeUrl)) # "/home/geth/.ethereum/geth.ipc"
 
 web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
@@ -46,8 +48,8 @@ logger = logging.getLogger("eth-sync")
 logger.setLevel(logging.INFO)
 
 # File logger
-#lfh = logging.FileHandler("/var/log/ethindexer.log")
-lfh = logging.StreamHandler()
+lfh = logging.FileHandler("ethsync.log")
+#lfh = logging.StreamHandler()
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 lfh.setFormatter(formatter)
 logger.addHandler(lfh)
@@ -61,37 +63,39 @@ logger.addHandler(lfh)
 #logger.addHandler(ljc)
 
 try:
-    logger.info("Trying to connect to "+ dbname)
-    conn = psycopg2.connect(dbname)
+    logger.info("Trying to connect to " + dbname + " database…")
+    conn = psycopg2.connect(database=dbname)
     conn.autocommit = True
     logger.info("Connected to the database")
 except:
     logger.error("Unable to connect to database")
     exit(1)
 
-# Delete last block as it may be not imparted in full
+# Delete last block as it may be not imported in full
 cur = conn.cursor()
 cur.execute('DELETE FROM public.ethtxs WHERE block = (SELECT Max(block) from public.ethtxs)')
 cur.close()
 conn.close()
 
 # Wait for the node to be in sync before indexing
-logger.info("Waiting Ethereum node to be in sync...")
+logger.info("Waiting Ethereum node to be in sync…")
 
 while web3.eth.syncing != False:
     # Change with the time, in second, do you want to wait
-    # before cheking again, default is 5 minutes
+    # before checking again, default is 5 minutes
     time.sleep(300)
 
-logger.info("Ethereum node is synced!")
+logger.info("Ethereum node is synced.")
 
 # Adds all transactions from Ethereum block
-def insertion(blockid, tr):
-    time = web3.eth.getBlock(blockid)['timestamp']
-    for x in range(0, tr):
-        trans = web3.eth.getTransactionByBlock(blockid, x)
+def insertTxsFromBlock(block):
+    blockid = block['number']
+    time = block['timestamp']
+    for txNumber in range(0, len(block.transactions)):
+        trans = block.transactions[txNumber]
+        transReceipt = web3.eth.getTransactionReceipt(trans['hash'])
         # Save also transaction status, should be null if pre byzantium blocks
-        status = bool(web3.eth.get_transaction_receipt(trans['hash']).status)
+        status = bool(transReceipt['status'])
         txhash = trans['hash'].hex()
         value = trans['value']
         inputinfo = trans['input']
@@ -101,7 +105,7 @@ def insertion(blockid, tr):
         fr = trans['from']
         to = trans['to']
         gasprice = trans['gasPrice']
-        gas = web3.eth.getTransactionReceipt(trans['hash'])['gasUsed']
+        gas = transReceipt['gasUsed']
         contract_to = ''
         contract_value = ''
         # Check if transaction is a contract transfer
@@ -121,7 +125,7 @@ def insertion(blockid, tr):
 # Fetch all of new (not in index) Ethereum blocks and add transactions to index
 while True:
     try:
-        conn = psycopg2.connect(dbname)
+        conn = psycopg2.connect(database=dbname)
         conn.autocommit = True
     except:
         logger.error("Unable to connect to database")
@@ -138,12 +142,13 @@ while True:
 
     logger.info('Current best block in index: ' + str(maxblockindb) + '; in Ethereum chain: ' + str(endblock))
 
-    for block in range(maxblockindb + 1, endblock):
-        transactions = web3.eth.getBlockTransactionCount(block)
-        if transactions > 0:
-            insertion(block, transactions)
+    for blockHeight in range(maxblockindb + 1, endblock):
+        block = web3.eth.getBlock(blockHeight, True)
+        if len(block.transactions) > 0:
+            insertTxsFromBlock(block)
+            logger.info('Block ' + str(blockHeight) + ' with ' + str(len(block.transactions)) + ' transactions is processed')
         else:
-            logger.debug('Block ' + str(block) + ' does not contain transactions')
+            logger.info('Block ' + str(blockHeight) + ' does not contain transactions')
     cur.close()
     conn.close()
     time.sleep(int(pollingPeriod))
