@@ -90,9 +90,10 @@ pip3 install psycopg2
 
 ### PostgreSQL
 
-Install Postgres. Create Postgres user:
+Install Postgres. Create Postgres user/role:
 
-```
+``` bash
+su - postgres #switch to psql admin user
 createuser -s api_user
 ```
 
@@ -100,21 +101,21 @@ Where `api_user` is a user who will run indexer service. (As example we create s
 
 Create database `index` for Ethereum transaction index:
 
-```
+``` sql
 CREATE DATABASE index;
 ```
 
-Add tables into `index` using SQL script `create_table.sql`:
+Add tables into `index` using SQL script `create_tables.sql`:
 
-```
-psql -f create_table.sql index
+``` bash
+psql -f create_tables.sql index
 ```
 
 Note, for case insensitive comparisons we use `citex` data type instead of `text`.
 
-Remember to grant privileges to psql database and tables for users you need. Example:
+Remember to grant privileges to psql database `index` and tables for users you need. Example:
 
-```
+``` sql
 \c index
 GRANT ALL ON ethtxs TO api_user;
 GRANT ALL ON aval TO api_user;
