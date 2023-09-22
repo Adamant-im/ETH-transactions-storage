@@ -8,6 +8,8 @@ Indexer is written in Python. It works as a service in the background:
 - Stores all transactions in the Postgres database
 - Provides data for API to get transactions by address with postgrest
 
+Sample request:
+
 ![Indexer's request example](./assets/indexer-request.png)
 
 ## Stored information
