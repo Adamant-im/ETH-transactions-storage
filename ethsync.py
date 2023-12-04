@@ -95,14 +95,14 @@ def insertTxsFromBlock(block):
     time = block['timestamp']
     for txNumber in range(0, len(block.transactions)):
         trans = block.transactions[txNumber]
-        transReceipt = web3.eth.getTransactionReceipt(trans['hash'])
+        transReceipt = web3.eth.get_transaction_receipt(trans['hash'])
         # Save also transaction status, should be null if pre byzantium blocks
-        status = bool(transReceipt['status'])
+        # status = bool(transReceipt['status'])
         txhash = trans['hash'].hex()
         value = trans['value']
         inputinfo = trans['input']
         # Check if transaction is a contract transfer
-        if (value == 0 and not inputinfo.startswith('0xa9059cbb')):
+        if (value == 0 and not inputinfo.startswith(b'0xa9059cbb')):
             continue
         fr = trans['from']
         to = trans['to']
@@ -111,7 +111,7 @@ def insertTxsFromBlock(block):
         contract_to = ''
         contract_value = ''
         # Check if transaction is a contract transfer
-        if inputinfo.startswith('0xa9059cbb'):
+        if inputinfo.startswith(b'0xa9059cbb'):
             contract_to = inputinfo[10:-64]
             contract_value = inputinfo[74:]
         # Correct contract transfer transaction represents '0x' + 4 bytes 'a9059cbb' + 32 bytes (64 chars) for contract address and 32 bytes for its value
@@ -121,8 +121,8 @@ def insertTxsFromBlock(block):
             contract_to = ''
             contract_value = ''
         cur.execute(
-            'INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value, status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
-            (time, fr, to, value, gas, gasprice, blockid, txhash, contract_to, contract_value, status))
+            'INSERT INTO public.ethtxs(time, txfrom, txto, value, gas, gasprice, block, txhash, contract_to, contract_value) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            (time, fr, to, value, gas, gasprice, blockid, txhash, contract_to, contract_value))
 
 # Fetch all of new (not in index) Ethereum blocks and add transactions to index
 while True:
@@ -140,8 +140,8 @@ while True:
     if maxblockindb is None:
         maxblockindb = int(startBlock)
 
-    endblock = int(web3.eth.blockNumber) - int(confirmationBlocks)
-
+    endblock = int(web3.eth.block_number) - int(confirmationBlocks)
+ 
     logger.info('Current best block in index: ' + str(maxblockindb) + '; in Ethereum chain: ' + str(endblock))
 
     for blockHeight in range(maxblockindb + 1, endblock):
