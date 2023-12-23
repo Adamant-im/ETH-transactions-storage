@@ -12,15 +12,7 @@ CREATE TABLE public.ethtxs
     value numeric,
     contract_to citext,
     contract_value citext,
-    status boolean
 );
-
-CREATE TABLE public.aval
-(
-    "status" INTEGER
-);
-
-INSERT INTO public.aval(status) VALUES (1);
 
 CREATE VIEW max_block as 
     SELECT
