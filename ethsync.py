@@ -145,7 +145,7 @@ while True:
     logger.info('Current best block in index: ' + str(maxblockindb) + '; in Ethereum chain: ' + str(endblock))
 
     for blockHeight in range(maxblockindb + 1, endblock):
-        block = web3.eth.getBlock(blockHeight, True)
+        block = web3.eth.get_block(blockHeight, True)
         if len(block.transactions) > 0:
             insertTxsFromBlock(block)
             logger.info('Block ' + str(blockHeight) + ' with ' + str(len(block.transactions)) + ' transactions is processed')
