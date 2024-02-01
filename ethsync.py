@@ -102,7 +102,7 @@ def insertTxsFromBlock(block):
         value = trans['value']
         inputinfo = trans['input']
         # Check if transaction is a contract transfer
-        if (value == 0 and not inputinfo.startswith(b'0xa9059cbb')):
+        if (value == 0 and not inputinfo.hex().startswith('0xa9059cbb')):
             continue
         fr = trans['from']
         to = trans['to']
@@ -111,7 +111,7 @@ def insertTxsFromBlock(block):
         contract_to = ''
         contract_value = ''
         # Check if transaction is a contract transfer
-        if inputinfo.startswith(b'0xa9059cbb'):
+        if inputinfo.hex().startswith('0xa9059cbb'):
             contract_to = inputinfo[10:-64]
             contract_value = inputinfo[74:]
         # Correct contract transfer transaction represents '0x' + 4 bytes 'a9059cbb' + 32 bytes (64 chars) for contract address and 32 bytes for its value
