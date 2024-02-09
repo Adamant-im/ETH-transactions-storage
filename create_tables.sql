@@ -14,7 +14,8 @@ CREATE TABLE public.ethtxs
     contract_value citext,
 );
 
-CREATE VIEW max_block as 
+CREATE VIEW max_block as
     SELECT
-        MAX(block)
+        MAX(block),
+        '2.4.0' as version
     FROM public.ethtxs;

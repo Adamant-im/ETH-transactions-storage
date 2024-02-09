@@ -6,7 +6,7 @@
 # Guénolé de Cadoudal (guenoledc@yahoo.fr), Drew Wells (drew.wells00@gmail.com)
 # 2020-2021 ADAMANT Foundation (devs@adamant.im): Aleksei Lebedev
 # 2017-2020 ADAMANT TECH LABS LP (pr@adamant.im): Artem Brunov, Aleksei Lebedev
-# v2.1
+# v2.4
 
 from os import environ
 from web3 import Web3
@@ -58,7 +58,7 @@ lfh.setFormatter(formatter)
 logger.addHandler(lfh)
 
 # Systemd logger, if we want to user journalctl logs
-# Install systemd-python and 
+# Install systemd-python and
 # decomment "#from systemd.journal import JournalHandler" up
 #ljc = JournalHandler()
 #formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -112,8 +112,8 @@ def insertTxsFromBlock(block):
         contract_value = ''
         # Check if transaction is a contract transfer
         if inputinfo.hex().startswith('0xa9059cbb'):
-            contract_to = inputinfo[10:-64]
-            contract_value = inputinfo[74:]
+            contract_to = inputinfo.hex()[10:-64]
+            contract_value = inputinfo.hex()[74:]
         # Correct contract transfer transaction represents '0x' + 4 bytes 'a9059cbb' + 32 bytes (64 chars) for contract address and 32 bytes for its value
         # Some buggy txs can break up Indexer, so we'll filter it
         if len(contract_to) > 128:
@@ -141,7 +141,7 @@ while True:
         maxblockindb = int(startBlock)
 
     endblock = int(web3.eth.block_number) - int(confirmationBlocks)
- 
+
     logger.info('Current best block in index: ' + str(maxblockindb) + '; in Ethereum chain: ' + str(endblock))
 
     for blockHeight in range(maxblockindb + 1, endblock):
