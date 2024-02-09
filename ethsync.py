@@ -6,7 +6,7 @@
 # Guénolé de Cadoudal (guenoledc@yahoo.fr), Drew Wells (drew.wells00@gmail.com)
 # 2020-2021 ADAMANT Foundation (devs@adamant.im): Aleksei Lebedev
 # 2017-2020 ADAMANT TECH LABS LP (pr@adamant.im): Artem Brunov, Aleksei Lebedev
-# v2.1
+# v2.4
 
 from os import environ
 from web3 import Web3
