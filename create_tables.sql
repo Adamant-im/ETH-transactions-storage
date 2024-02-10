@@ -17,5 +17,5 @@ CREATE TABLE public.ethtxs
 CREATE VIEW max_block as
     SELECT
         MAX(block),
-        '2.4.0' as version
+        '2.4.1' as version
     FROM public.ethtxs;
