@@ -285,7 +285,7 @@ curl -k -X GET "http://localhost:3000/ethtxs?and=(or(txfrom.eq.0xFBb1b73C4f0BDa4
 
 # License
 
-Copyright © 2020-2022 ADAMANT Foundation
+Copyright © 2020-2024 ADAMANT Foundation
 Copyright © 2017-2020 ADAMANT TECH LABS LP
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.

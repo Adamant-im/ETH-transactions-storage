@@ -1,12 +1,13 @@
 # Indexer for Ethereum to get transaction list by ETH address
 # https://github.com/Adamant-im/ETH-transactions-storage
 
-# Contributions:
+# Contributors:
+# v2.4.1
+# 2022-2024 ADAMANT Foundation (devs@adamant.im), @twhitehead00, Tyvan Cheng (tyvancheng@gmail.com)
 # 2021-2022 ADAMANT Foundation (devs@adamant.im), Francesco Bonanno (mibofra@parrotsec.org),
 # Guénolé de Cadoudal (guenoledc@yahoo.fr), Drew Wells (drew.wells00@gmail.com)
 # 2020-2021 ADAMANT Foundation (devs@adamant.im): Aleksei Lebedev
 # 2017-2020 ADAMANT TECH LABS LP (pr@adamant.im): Artem Brunov, Aleksei Lebedev
-# v2.4
 
 from os import environ
 from web3 import Web3
