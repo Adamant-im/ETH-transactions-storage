@@ -1,3 +1,11 @@
 .idea
 .vscode
+.DS_Store
+
 data
+logs
+
+# ai
+.ai-ignored/
+.ai-tasks/
+.claude/
