@@ -5,6 +5,10 @@
 data
 logs
 
+# Python
+__pycache__/
+*.py[cod]
+
 # ai
 .ai-ignored/
 .ai-tasks/
