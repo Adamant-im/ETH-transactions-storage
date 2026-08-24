@@ -27,3 +27,11 @@ CREATE INDEX complex_index
     ON public.ethtxs USING btree
     (contract_to, txfrom, txto);
 */
+
+/*
+-- Reclaiming disk space on existing nodes:
+-- Run to drop redundant indexes concurrently without blocking ongoing ethsync writes:
+DROP INDEX CONCURRENTLY IF EXISTS public.contract_to_index;
+DROP INDEX CONCURRENTLY IF EXISTS public.txto_index;
+DROP INDEX CONCURRENTLY IF EXISTS public.txto_txfrom_index;
+*/

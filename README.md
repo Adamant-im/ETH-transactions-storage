@@ -115,24 +115,35 @@ Apply table schemas, views, and read-only roles using `create_tables.sql`:
 psql -d index -f create_tables.sql
 ```
 
-Grant table permissions to `api_user`:
+Grant explicit minimal table permissions to `api_user`:
 
 ```sql
 \c index
-GRANT ALL ON public.ethtxs TO api_user;
-GRANT ALL ON public.aval TO api_user;
-GRANT SELECT ON public.max_block TO api_user;
+GRANT SELECT, INSERT, DELETE ON public.ethtxs TO api_user;
+GRANT SELECT ON public.aval, public.max_block TO api_user;
 ```
 
 #### Read-Only Anonymous Role (`web_anon`)
 
-To prevent unauthorized write operations through PostgREST, create a dedicated read-only role `web_anon`:
+To prevent unauthorized write operations through PostgREST, a dedicated read-only role `web_anon` is used for unauthenticated API requests.
+
+`create_tables.sql` configures `web_anon` and its grants automatically and idempotently. For existing databases being upgraded without re-running `create_tables.sql`, apply the following migration:
 
 ```sql
-CREATE ROLE web_anon NOLOGIN;
+\c index
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'web_anon') THEN
+        CREATE ROLE web_anon NOLOGIN;
+    END IF;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'api_user') THEN
+        GRANT web_anon TO api_user;
+    END IF;
+END
+$$;
+
 GRANT USAGE ON SCHEMA public TO web_anon;
 GRANT SELECT ON public.ethtxs, public.aval, public.max_block TO web_anon;
-GRANT web_anon TO api_user; -- Allows PostgREST connection role to switch to web_anon
 ```
 
 > **Upgrade note for existing deployments:** Ensure `GRANT SELECT ON public.max_block TO web_anon;` is executed. Without this grant, the `/max_block` health check used by ADAMANT clients will fail with permission errors.
@@ -181,6 +192,16 @@ If custom or third-party integrations require non-standard queries (e.g., queryi
 
 ```bash
 psql -d index -f create_indexes_legacy.sql
+```
+
+#### Reclaiming Disk Space on Existing Nodes
+
+Upgrading an existing node by creating the new minimal index set does not automatically drop old indexes from disk. After applying `create_indexes.sql` and `create_indexes_add.sql`, existing operators can reclaim **~90–110 GB** of disk space by dropping redundant indexes concurrently without blocking ongoing writes:
+
+```sql
+DROP INDEX CONCURRENTLY IF EXISTS public.contract_to_index;
+DROP INDEX CONCURRENTLY IF EXISTS public.txto_index;
+DROP INDEX CONCURRENTLY IF EXISTS public.txto_txfrom_index;
 ```
 
 #### Operational Note on Index Building
@@ -282,6 +303,21 @@ server-port = 3000
    - An explicit `?limit=25` takes precedence and returns 25 rows
    - Requests exceeding `db-max-rows` or omitting `limit` are capped at 10,000 rows
    - **Note:** `db-max-rows` bounds rows _returned_, not rows _scanned_
+
+#### Cutover Order for Upgrading Existing Nodes
+
+When updating an existing production deployment to use `web_anon`, follow this exact sequence to prevent public API outages:
+
+1. Apply the database permissions and create the `web_anon` role (via `create_tables.sql` or the SQL snippet in Section 3).
+2. Verify that `web_anon` permissions are active:
+
+```bash
+psql -d index -c "SET ROLE web_anon; SELECT 1 FROM public.ethtxs LIMIT 1; SELECT * FROM public.max_block; SELECT * FROM public.aval;"
+```
+
+3. Update `postgrest.conf` (`db-anon-role = "web_anon"` and `db-max-rows = 10000`), then restart PostgREST.
+
+> **Warning:** If `db-anon-role` is switched in `postgrest.conf` before PostgreSQL role grants take effect, PostgREST will fail to set the anonymous role and all public API requests will immediately return 500 errors.
 
 Start PostgREST:
 

@@ -159,7 +159,7 @@ def insert_txs_from_block(block, cursor):
 while True:
     try:
         conn = psycopg2.connect(database=dbname)
-        conn.autocommit = True
+        conn.autocommit = False
     except Exception as e:
         logger.error(f"Unable to connect to database: {e}")
         time.sleep(int(polling_period))
@@ -183,10 +183,12 @@ while True:
             block = web3.eth.get_block(block_height, True)
             if len(block.transactions) > 0:
                 insert_txs_from_block(block, cur)
+                conn.commit()
                 logger.info(f"Block {block_height} with {len(block.transactions)} transactions processed")
             else:
                 logger.info(f"Block {block_height} contains no transactions")
     except Exception as e:
+        conn.rollback()
         logger.error(f"Error during synchronization pass: {e}")
     finally:
         cur.close()
