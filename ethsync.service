@@ -1,18 +1,27 @@
-# Change ExecStart, Environment, User, Group
-# Copy to /lib/systemd/system/ethsync.service
+# Systemd service unit for Ethereum Transactions Storage indexer
+# Copy to /etc/systemd/system/ethsync.service
+# Adjust User, Group, WorkingDirectory, and Environment variables as needed
 
 [Unit]
-Description=EthereumTransactionStorage
-After=syslog.target network.target postgresql.service
+Description=Ethereum Transactions Storage Indexer
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
-ExecStart=/usr/bin/python3 /home/api_user/ETH-transactions-storage/ethsync.py
-Environment="DB_NAME=index" "ETH_URL=http://127.0.0.1:8545" "START_BLOCK=14600000" "LOG_FILE=/home/api_user/ETH-transactions-storage/ethsync.log"
+Type=simple
 User=api_user
 Group=api_user
-TimeoutSec=300
-RestartSec=90
+WorkingDirectory=/home/api_user/ETH-transactions-storage
+ExecStart=/usr/bin/python3 /home/api_user/ETH-transactions-storage/ethsync.py
+Environment="DB_NAME=index"
+Environment="ETH_URL=http://127.0.0.1:8545"
+Environment="START_BLOCK=14600000"
+Environment="CONFIRMATIONS_BLOCK=0"
+Environment="PERIOD=20"
+Environment="LOG_FILE=/home/api_user/ETH-transactions-storage/ethsync.log"
 Restart=on-failure
+RestartSec=30
+TimeoutSec=300
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

@@ -1,0 +1,49 @@
+{
+  "name": "eth-transactions-storage",
+  "version": "2.5.0",
+  "description": "Ethereum native and ERC-20 transaction indexer and storage in PostgreSQL with PostgREST API",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint:md": "markdownlint-cli \"**/*.md\" --ignore .ai-ignored --ignore .ai-tasks --ignore node_modules",
+    "lint:py": "python3 -m py_compile ethsync.py ethtest.py pgtest.py"
+  },
+  "keywords": [
+    "adm",
+    "adamant",
+    "ethereum",
+    "eth",
+    "erc20",
+    "indexer",
+    "blockchain",
+    "postgrest",
+    "postgresql",
+    "web3",
+    "crypto",
+    "cryptocurrency",
+    "transactions",
+    "storage",
+    "decentralization",
+    "privacy",
+    "security",
+    "wallet"
+  ],
+  "author": "ADAMANT community developers <devs@adamant.im>, ADAMANT Foundation <devs@adamant.im>, ADAMANT Tech Labs <devs@adamant.im>",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Adamant-im/ETH-transactions-storage.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Adamant-im/ETH-transactions-storage/issues"
+  },
+  "homepage": "https://github.com/Adamant-im/ETH-transactions-storage#readme",
+  "devDependencies": {
+    "markdownlint-cli": "^0.49.1",
+    "prettier": "^3.5.0"
+  }
+}
