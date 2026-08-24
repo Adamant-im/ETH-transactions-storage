@@ -27,9 +27,9 @@ def get_version():
     try:
         package_json_path = Path(__file__).resolve().parent / "package.json"
         with open(package_json_path, "r", encoding="utf-8") as f:
-            return json.load(f).get("version", "2.5.0")
+            return json.load(f).get("version", "undefined")
     except Exception:
-        return "2.5.0"
+        return "undefined"
 
 
 __version__ = get_version()
