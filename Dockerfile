@@ -1,16 +1,16 @@
-FROM python:3.6-slim
+FROM python:3.11-slim
 
-RUN apt update -y
-RUN apt install -y build-essential 
-RUN apt install -y git
-RUN pip3 install web3
-RUN pip3 install psycopg2
-
-RUN mkdir /eth-storage
-
-COPY ./ethsync.py /eth-storage
-
-ENV DB_NAME=yourDB
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends build-essential libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /eth-storage
-ENTRYPOINT [ "python3.6", "./ethsync.py" ]
+
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+COPY package.json ethsync.py ethtest.py pgtest.py ./
+
+ENV DB_NAME=index
+
+ENTRYPOINT [ "python3", "./ethsync.py" ]

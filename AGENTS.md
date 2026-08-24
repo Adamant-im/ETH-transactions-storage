@@ -65,30 +65,32 @@ If sources disagree:
 
 ## System Map (What You Are Editing)
 
-| File / Component | Purpose | Key Responsibilities |
-| --- | --- | --- |
-| `ethsync.py` | Main indexer daemon | Connects to Ethereum RPC (HTTP/WS/IPC), polls blocks, parses ETH/ERC-20 transfers, writes to PostgreSQL, handles reorg cleanup |
-| `create_tables.sql` | Base schema & views | Creates `citext` extension, `public.ethtxs` table, and `public.max_block` health-check view |
-| `create_indexes.sql` | Core database indexes | Primary B-tree indexes for fast address and block lookups |
-| `create_indexes_add.sql` | Additional / optional indexes | Composite and partial indexes for complex filtering and ordering (`time_index`, `txto_contract_to_index`, partial indexes) |
-| `ethtest.py` | Ethereum node test script | Verifies RPC connectivity and queries current block height |
-| `pgtest.py` | Database test script | Verifies PostgreSQL connectivity and queries table status |
-| `Dockerfile` | Container build definition | Builds minimal Python runtime environment for `ethsync.py` |
-| `docker-compose.yml` | Multi-container setup | Configures PostgreSQL, PostgREST, local Geth test node, and indexer service |
-| `ethsync.service` | Systemd unit template | Manages background service execution, restart policies, and environment variables |
+| File / Component            | Purpose                        | Key Responsibilities                                                                                                                                  |
+| --------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ethsync.py`                | Main indexer daemon            | Connects to Ethereum RPC (HTTP/WS/IPC), polls blocks, parses ETH/ERC-20 transfers, writes to PostgreSQL, handles reorg cleanup                        |
+| `create_tables.sql`         | Base schema & views            | Creates `citext` extension, `public.ethtxs` table, `public.aval` table, `public.max_block` health-check view, and `web_anon` role                     |
+| `create_indexes.sql`        | Core database indexes (4 of 5) | Minimal core B-tree indexes for address and block lookups (`block_index`, `txfrom_index`, `txto_contract_to_index`, `txto_w_empty_contract_to_index`) |
+| `create_indexes_add.sql`    | Additional index (5 of 5)      | Timestamp descending index (`time_index`) completing the minimal 5-index set                                                                          |
+| `create_indexes_legacy.sql` | Deprecated / legacy indexes    | Optional indexes for non-standard queries (`contract_to_index`, `txto_index`, `txto_txfrom_index`)                                                    |
+| `ethtest.py`                | Ethereum node test script      | Verifies RPC connectivity and queries current block height                                                                                            |
+| `pgtest.py`                 | Database test script           | Verifies PostgreSQL connectivity and queries table status                                                                                             |
+| `requirements.txt`          | Python dependencies            | Declares runtime dependencies (`web3`, `psycopg2-binary`)                                                                                             |
+| `Dockerfile`                | Container build definition     | Builds minimal Python runtime environment for `ethsync.py`                                                                                            |
+| `docker-compose.yml`        | Multi-container setup          | Configures PostgreSQL, PostgREST (`web_anon`, `db-max-rows`), local Geth node, and indexer service                                                    |
+| `ethsync.service`           | Systemd unit template          | Manages background service execution, restart policies, and environment variables                                                                     |
 
 ## Environment Variables Configuration
 
 `ethsync.py` is configured via environment variables:
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DB_NAME` | *(required)* | PostgreSQL database name or connection URI |
-| `ETH_URL` | *(required)* | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
-| `START_BLOCK` | `1` | Starting block height when database is empty |
-| `CONFIRMATIONS_BLOCK` | `0` | Number of trailing confirmation blocks to exclude from sync |
-| `PERIOD` | `20` | Polling interval in seconds between synchronization passes |
-| `LOG_FILE` | `None` | Optional file path for file logging (defaults to stdout stream logging) |
+| Variable              | Default      | Description                                                                   |
+| --------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `DB_NAME`             | _(required)_ | PostgreSQL database name or connection URI                                    |
+| `ETH_URL`             | _(required)_ | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `START_BLOCK`         | `1`          | Starting block height when database is empty                                  |
+| `CONFIRMATIONS_BLOCK` | `0`          | Number of trailing confirmation blocks to exclude from sync                   |
+| `PERIOD`              | `20`         | Polling interval in seconds between synchronization passes                    |
+| `LOG_FILE`            | `None`       | Optional file path for file logging (defaults to stdout stream logging)       |
 
 ## Client Integration Contracts
 
@@ -127,6 +129,7 @@ GET /aval
 
 - Use `citext` for address fields (`txfrom`, `txto`, `txhash`, `contract_to`) to ensure case-insensitive matching without costly `LOWER()` runtime conversions
 - Keep table schema and index definitions synchronized with client query patterns
+- Use the minimal 5-index set (`create_indexes.sql` + `create_indexes_add.sql`) as default, saving ~90–110 GB per 1-year dataset (~490M rows) compared to legacy sets
 - Be aware of lock contention: `CREATE INDEX` takes a `ShareLock` that blocks `ethsync.py` inserts; recommend `CREATE INDEX CONCURRENTLY` in production deployment documentation
 - In `ethsync.py`, ensure idempotent startup: remove the highest block on startup to cleanly recover from interrupted block writes
 - Use parameterized SQL queries (`%s` placeholders in psycopg2) for all database operations to eliminate SQL injection risks
@@ -134,9 +137,13 @@ GET /aval
 ## Security and Access Control Rules
 
 - Never expose write permissions to public API consumers
-- Configure PostgREST with a dedicated read-only role (e.g., `web_anon`) having only `SELECT` privileges on `public.ethtxs`, `public.aval`, and `public.max_block`
+- Configure PostgREST with a dedicated read-only role (`web_anon`) having only `SELECT` privileges on `public.ethtxs`, `public.aval`, and `public.max_block`
 - The indexer user (`api_user`) requires only DML grants (`SELECT`, `INSERT`, `DELETE`) on indexing tables and does not require PostgreSQL superuser privileges
-- In reverse proxy configurations (nginx), enforce an HTTP method allow-list (`GET`, `HEAD`, `OPTIONS`) on public endpoints (`/ethtxs`, `/aval`, `/max_block`) to reject unexpected write verbs at the edge
+- Enforce `db-max-rows = 10000` in PostgREST configuration to cap returned row volumes and prevent out-of-memory crashes on unbounded queries
+- In reverse proxy configurations (nginx), enforce:
+  - An HTTP method allow-list (`GET`, `HEAD`, `OPTIONS`) on public endpoints (`/ethtxs`, `/aval`, `/max_block`) to reject unexpected write verbs at the edge
+  - Mandatory address filter validation (`txfrom` or `txto`) on `/ethtxs` to prevent catastrophic full table sequential scans on unindexed columns (e.g., `txhash`)
+  - Prevention of expensive count aggregates (`Prefer: count=exact`) and unbounded offsets
 - Never hardcode or log passwords, database credentials, or private keys
 - Sanitize and validate raw transaction inputs; reject malformed `contract_to` fields exceeding standard length bounds before database insertion
 
@@ -245,10 +252,10 @@ A task is complete only when:
 
 ## Related Repositories
 
-| Repository | Relevance |
-| --- | --- |
-| [`adamant`](https://github.com/Adamant-im/adamant) | ADAMANT blockchain node repository; see its [`AGENTS.md`](https://github.com/Adamant-im/adamant/blob/dev/AGENTS.md) for node operating rules |
-| [`adamant-im`](https://github.com/Adamant-im/adamant-im) | Main ADAMANT client (Web/PWA/Electron/Android); primary consumer of ETH indexer API (`src/lib/nodes/eth-indexer/EthIndexerClient.ts`) |
-| [`adamant-iOS`](https://github.com/Adamant-im/adamant-iOS) | Native iOS client; queries `/ethtxs` for ETH and ERC-20 transfer histories (`EthWalletService.swift`, `ERC20WalletService.swift`) |
-| [`adamant-wallets`](https://github.com/Adamant-im/adamant-wallets) | Coin and token specifications across ADAMANT applications |
-| [`docs`](https://github.com/Adamant-im/docs) | Official ADAMANT documentation source (<https://docs.adamant.im>) |
+| Repository                                                         | Relevance                                                                                                                                    |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`adamant`](https://github.com/Adamant-im/adamant)                 | ADAMANT blockchain node repository; see its [`AGENTS.md`](https://github.com/Adamant-im/adamant/blob/dev/AGENTS.md) for node operating rules |
+| [`adamant-im`](https://github.com/Adamant-im/adamant-im)           | Main ADAMANT client (Web/PWA/Electron/Android); primary consumer of ETH indexer API (`src/lib/nodes/eth-indexer/EthIndexerClient.ts`)        |
+| [`adamant-iOS`](https://github.com/Adamant-im/adamant-iOS)         | Native iOS client; queries `/ethtxs` for ETH and ERC-20 transfer histories (`EthWalletService.swift`, `ERC20WalletService.swift`)            |
+| [`adamant-wallets`](https://github.com/Adamant-im/adamant-wallets) | Coin and token specifications across ADAMANT applications                                                                                    |
+| [`docs`](https://github.com/Adamant-im/docs)                       | Official ADAMANT documentation source (<https://docs.adamant.im>)                                                                            |

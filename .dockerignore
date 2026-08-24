@@ -1,0 +1,17 @@
+.git
+.gitignore
+.ai-ignored/
+.ai-tasks/
+.claude/
+.idea/
+.vscode/
+.DS_Store
+data/
+logs/
+node_modules/
+__pycache__/
+*.py[cod]
+*.md
+.prettier*
+.editorconfig
+.markdownlint*

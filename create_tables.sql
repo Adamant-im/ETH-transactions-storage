@@ -1,6 +1,9 @@
-CREATE EXTENSION citext;
+-- Ethereum Transactions Storage - Base Table & View Definitions
+-- PostgreSQL 12+
 
-CREATE TABLE public.ethtxs
+CREATE EXTENSION IF NOT EXISTS citext;
+
+CREATE TABLE IF NOT EXISTS public.ethtxs
 (
     time integer,
     txfrom citext,
@@ -11,11 +14,38 @@ CREATE TABLE public.ethtxs
     txhash citext,
     value numeric,
     contract_to citext,
-    contract_value citext,
+    contract_value citext
 );
 
-CREATE VIEW max_block as
+CREATE TABLE IF NOT EXISTS public.aval
+(
+    status boolean DEFAULT true
+);
+
+INSERT INTO public.aval (status)
+SELECT true
+WHERE NOT EXISTS (SELECT 1 FROM public.aval);
+
+CREATE OR REPLACE VIEW public.max_block AS
     SELECT
-        MAX(block),
-        '2.4.1' as version
+        MAX(block) AS max,
+        '2.5.0'::text AS version
     FROM public.ethtxs;
+
+-- Setup read-only anonymous role for PostgREST
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'web_anon') THEN
+        CREATE ROLE web_anon NOLOGIN;
+    END IF;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'api_user') THEN
+        GRANT web_anon TO api_user;
+    END IF;
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
+        GRANT web_anon TO app_user;
+    END IF;
+END
+$$;
+
+GRANT USAGE ON SCHEMA public TO web_anon;
+GRANT SELECT ON public.ethtxs, public.aval, public.max_block TO web_anon;
