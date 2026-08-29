@@ -67,8 +67,10 @@ If sources disagree:
 
 | File / Component            | Purpose                        | Key Responsibilities                                                                                                                                  |
 | --------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ethsync.py`                | Main indexer daemon            | Connects to Ethereum RPC (HTTP/WS/IPC), polls blocks, parses ETH/ERC-20 transfers, writes to PostgreSQL, handles reorg cleanup                        |
-| `create_tables.sql`         | Base schema & views            | Creates `citext` extension, `public.ethtxs` table, `public.aval` table, `public.max_block` health-check view, and `web_anon` role                     |
+| `ethsync.py`                | Main indexer daemon            | Connects to Ethereum RPC (HTTP/WS/IPC), polls blocks, parses and filters ETH/ERC-20 transfers, writes to PostgreSQL, handles reorg cleanup            |
+| `address_filter.py`         | Address filter helpers         | Loads and validates monitored addresses, normalizes native and ABI-encoded address values, and evaluates transaction matches                          |
+| `addresses.txt`             | Monitored address list         | Stores one Ethereum address per line for optional filtered indexing                                                                                   |
+| `create_tables.sql`         | Base schema & views            | Creates `citext`, storage and sync-state tables, `public.max_block` health-check view, and the `web_anon` role                                        |
 | `create_indexes.sql`        | Core database indexes (4 of 5) | Minimal core B-tree indexes for address and block lookups (`block_index`, `txfrom_index`, `txto_contract_to_index`, `txto_w_empty_contract_to_index`) |
 | `create_indexes_add.sql`    | Additional index (5 of 5)      | Timestamp descending index (`time_index`) completing the minimal 5-index set                                                                          |
 | `create_indexes_legacy.sql` | Deprecated / legacy indexes    | Optional indexes for non-standard queries (`contract_to_index`, `txto_index`, `txto_txfrom_index`)                                                    |
@@ -83,14 +85,16 @@ If sources disagree:
 
 `ethsync.py` is configured via environment variables:
 
-| Variable              | Default      | Description                                                                   |
-| --------------------- | ------------ | ----------------------------------------------------------------------------- |
-| `DB_NAME`             | _(required)_ | PostgreSQL database name or connection URI                                    |
-| `ETH_URL`             | _(required)_ | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
-| `START_BLOCK`         | `1`          | Starting block height when database is empty                                  |
-| `CONFIRMATIONS_BLOCK` | `0`          | Number of trailing confirmation blocks to exclude from sync                   |
-| `PERIOD`              | `20`         | Polling interval in seconds between synchronization passes                    |
-| `LOG_FILE`            | `None`       | Optional file path for file logging (defaults to stdout stream logging)       |
+| Variable                 | Default         | Description                                                                   |
+| ------------------------ | --------------- | ----------------------------------------------------------------------------- |
+| `DB_NAME`                | _(required)_    | PostgreSQL database name or connection URI                                    |
+| `ETH_URL`                | _(required)_    | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `START_BLOCK`            | `1`             | Starting block height when database is empty                                  |
+| `CONFIRMATIONS_BLOCK`    | `0`             | Number of trailing confirmation blocks to exclude from sync                   |
+| `PERIOD`                 | `20`            | Polling interval in seconds between synchronization passes                    |
+| `LOG_FILE`               | `None`          | Optional file path for file logging (defaults to stdout stream logging)       |
+| `ADDRESS_FILTER_ENABLED` | `false`         | Enables storage filtering by the configured monitored-address list            |
+| `ADDRESS_FILTER_FILE`    | `addresses.txt` | Path to the monitored-address list                                            |
 
 ## Client Integration Contracts
 
@@ -132,6 +136,7 @@ GET /aval
 - Use the minimal 5-index set (`create_indexes.sql` + `create_indexes_add.sql`) as default, saving ~90–110 GB per 1-year dataset (~490M rows) compared to legacy sets
 - Be aware of lock contention: `CREATE INDEX` takes a `ShareLock` that blocks `ethsync.py` inserts; recommend `CREATE INDEX CONCURRENTLY` in production deployment documentation
 - In `ethsync.py`, ensure idempotent startup: remove the highest block on startup to cleanly recover from interrupted block writes
+- Track the last processed block in `public.sync_state` so filtered or empty blocks do not get scanned repeatedly
 - Use parameterized SQL queries (`%s` placeholders in psycopg2) for all database operations to eliminate SQL injection risks
 
 ## Security and Access Control Rules

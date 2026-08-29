@@ -1,0 +1,3 @@
+# Add one monitored Ethereum address per line.
+# Empty lines and text after # are ignored.
+# Example: 0x1111111111111111111111111111111111111111

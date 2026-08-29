@@ -1,7 +1,11 @@
 from os import environ
+from pathlib import Path
 import sys
 
+from dotenv import load_dotenv
 import psycopg2
+
+load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 dbname = environ.get("DB_NAME") or "index"
 

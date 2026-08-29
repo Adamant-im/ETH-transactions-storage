@@ -6,6 +6,7 @@
 .idea/
 .vscode/
 .DS_Store
+.env
 data/
 logs/
 node_modules/

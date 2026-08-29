@@ -18,14 +18,25 @@ import sys
 import time
 
 import psycopg2
+from dotenv import load_dotenv
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
+
+from address_filter import (
+    load_monitored_addresses,
+    parse_boolean,
+    transaction_matches_filter,
+)
+
+
+PROJECT_DIRECTORY = Path(__file__).resolve().parent
+load_dotenv(PROJECT_DIRECTORY / ".env", override=False)
 
 
 def get_version():
     """Reads application version from package.json."""
     try:
-        package_json_path = Path(__file__).resolve().parent / "package.json"
+        package_json_path = PROJECT_DIRECTORY / "package.json"
         with open(package_json_path, "r", encoding="utf-8") as f:
             return json.load(f).get("version", "undefined")
     except Exception:
@@ -40,7 +51,12 @@ start_block = environ.get("START_BLOCK") or "1"
 confirmation_blocks = environ.get("CONFIRMATIONS_BLOCK") or "0"
 node_url = environ.get("ETH_URL")
 polling_period = environ.get("PERIOD") or "20"
-log_file = environ.get("LOG_FILE")
+log_file = environ.get("LOG_FILE") or None
+address_filter_enabled_value = environ.get("ADDRESS_FILTER_ENABLED") or "false"
+address_filter_file = Path(environ.get("ADDRESS_FILTER_FILE") or "addresses.txt").expanduser()
+
+if not address_filter_file.is_absolute():
+    address_filter_file = PROJECT_DIRECTORY / address_filter_file
 
 if dbname is None:
     print("Set PostgreSQL database in environment variable DB_NAME")
@@ -52,11 +68,11 @@ if node_url is None:
 
 # Connect to Ethereum node
 if node_url.startswith("http://") or node_url.startswith("https://"):
-    web3 = Web3(Web3.HTTPProvider(node_url)) # "http://publicnode:8545"
+    web3 = Web3(Web3.HTTPProvider(node_url))  # "http://publicnode:8545"
 elif node_url.startswith("ws://") or node_url.startswith("wss://"):
-    web3 = Web3(Web3.WebsocketProvider(node_url)) # "ws://publicnode:8546"
+    web3 = Web3(Web3.WebsocketProvider(node_url))  # "ws://publicnode:8546"
 else:
-    web3 = Web3(Web3.IPCProvider(node_url)) # "/home/geth/.ethereum/geth.ipc"
+    web3 = Web3(Web3.IPCProvider(node_url))  # "/home/geth/.ethereum/geth.ipc"
 
 web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
@@ -76,19 +92,61 @@ logger.addHandler(handler)
 
 logger.info(f"Starting Ethereum Transactions Storage v{__version__}…")
 
+try:
+    address_filter_enabled = parse_boolean(
+        address_filter_enabled_value, "ADDRESS_FILTER_ENABLED"
+    )
+    monitored_addresses = (
+        load_monitored_addresses(address_filter_file)
+        if address_filter_enabled
+        else frozenset()
+    )
+except ValueError as e:
+    logger.error(f"Unable to configure address filter: {e}")
+    sys.exit(2)
+
+if address_filter_enabled:
+    logger.info(
+        f"Address filter enabled with {len(monitored_addresses)} monitored addresses "
+        f"from '{address_filter_file}'"
+    )
+else:
+    logger.info("Address filter disabled")
+
 # Connect to database and clean up the last block on startup
 try:
     logger.info(f"Connecting to '{dbname}' database…")
     conn = psycopg2.connect(database=dbname)
-    conn.autocommit = True
+    conn.autocommit = False
     logger.info("Connected to the database")
 
     # Delete last block on startup in case it was partially indexed
     cur = conn.cursor()
-    cur.execute("DELETE FROM public.ethtxs WHERE block = (SELECT MAX(block) FROM public.ethtxs);")
+    cur.execute(
+        """
+        SELECT GREATEST(
+            (SELECT MAX(block) FROM public.ethtxs),
+            (SELECT last_block FROM public.sync_state WHERE singleton = TRUE)
+        );
+        """
+    )
+    last_processed_block = cur.fetchone()[0]
+    if last_processed_block is not None:
+        cur.execute("DELETE FROM public.ethtxs WHERE block = %s;", (last_processed_block,))
+        cur.execute(
+            """
+            UPDATE public.sync_state
+            SET last_block = %s
+            WHERE singleton = TRUE;
+            """,
+            (last_processed_block - 1,),
+        )
+    conn.commit()
     cur.close()
     conn.close()
 except Exception as e:
+    if "conn" in locals():
+        conn.rollback()
     logger.error(f"Unable to connect to database or clean up initial block: {e}")
     sys.exit(1)
 
@@ -100,13 +158,13 @@ while bool(web3.eth.syncing):
 logger.info("Ethereum node is synchronized.")
 
 
-def insert_txs_from_block(block, cursor):
+def insert_txs_from_block(block, cursor, address_filter=None):
     """Parses and inserts native ETH and ERC-20 transfer transactions from a block."""
     block_id = block["number"]
     tx_time = block["timestamp"]
+    inserted_transactions = 0
 
     for tx in block.transactions:
-        tx_receipt = web3.eth.get_transaction_receipt(tx["hash"])
         tx_hash = tx["hash"].hex()
         value = tx["value"]
         input_data = tx["input"]
@@ -119,7 +177,6 @@ def insert_txs_from_block(block, cursor):
         tx_from = tx["from"]
         tx_to = tx["to"]
         gas_price = tx["gasPrice"]
-        gas = tx_receipt["gasUsed"]
         contract_to = ""
         contract_value = ""
 
@@ -130,9 +187,19 @@ def insert_txs_from_block(block, cursor):
 
         # Filter out malformed contract transfer inputs
         if len(contract_to) > 128:
-            logger.info(f"Skipping tx {tx_hash}: unexpected contract_to length ({len(contract_to)})")
+            logger.info(
+                f"Skipping tx {tx_hash}: unexpected contract_to length ({len(contract_to)})"
+            )
             contract_to = ""
             contract_value = ""
+
+        if address_filter is not None and not transaction_matches_filter(
+            address_filter, tx_from, tx_to, contract_to
+        ):
+            continue
+
+        tx_receipt = web3.eth.get_transaction_receipt(tx["hash"])
+        gas = tx_receipt["gasUsed"]
 
         cursor.execute(
             """
@@ -153,6 +220,9 @@ def insert_txs_from_block(block, cursor):
                 contract_value,
             ),
         )
+        inserted_transactions += 1
+
+    return inserted_transactions
 
 
 # Main synchronization loop
@@ -168,25 +238,56 @@ while True:
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT MAX(block) FROM public.ethtxs;")
+        if address_filter_enabled:
+            refreshed_addresses = load_monitored_addresses(address_filter_file)
+            if refreshed_addresses != monitored_addresses:
+                monitored_addresses = refreshed_addresses
+                logger.info(
+                    f"Reloaded {len(monitored_addresses)} monitored addresses "
+                    f"from '{address_filter_file}'"
+                )
+
+        cur.execute(
+            """
+            SELECT GREATEST(
+                (SELECT MAX(block) FROM public.ethtxs),
+                (SELECT last_block FROM public.sync_state WHERE singleton = TRUE)
+            );
+            """
+        )
         max_block_in_db = cur.fetchone()[0]
 
         # On first start with an empty database, index from START_BLOCK
         if max_block_in_db is None:
-            max_block_in_db = int(start_block)
+            max_block_in_db = int(start_block) - 1
 
         end_block = int(web3.eth.block_number) - int(confirmation_blocks)
 
-        logger.info(f"Current best block in index: {max_block_in_db}; in Ethereum chain: {end_block}")
+        logger.info(
+            f"Current best block in index: {max_block_in_db}; in Ethereum chain: {end_block}"
+        )
 
         for block_height in range(max_block_in_db + 1, end_block):
             block = web3.eth.get_block(block_height, True)
-            if len(block.transactions) > 0:
-                insert_txs_from_block(block, cur)
-                conn.commit()
-                logger.info(f"Block {block_height} with {len(block.transactions)} transactions processed")
-            else:
-                logger.info(f"Block {block_height} contains no transactions")
+            inserted_transactions = insert_txs_from_block(
+                block,
+                cur,
+                monitored_addresses if address_filter_enabled else None,
+            )
+            cur.execute(
+                """
+                INSERT INTO public.sync_state(singleton, last_block)
+                VALUES (TRUE, %s)
+                ON CONFLICT (singleton) DO UPDATE
+                SET last_block = EXCLUDED.last_block;
+                """,
+                (block_height,),
+            )
+            conn.commit()
+            logger.info(
+                f"Block {block_height} with {len(block.transactions)} transactions processed; "
+                f"{inserted_transactions} stored"
+            )
     except Exception as e:
         conn.rollback()
         logger.error(f"Error during synchronization pass: {e}")

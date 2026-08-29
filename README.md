@@ -6,6 +6,7 @@ The indexer operates as a background service:
 
 - Connects to an Ethereum node via HTTP, WebSocket, or IPC (compatible with Geth, Nethermind, Besu, and Erigon)
 - Indexes native ETH transfers and ERC-20 token transfers into a PostgreSQL database
+- Optionally stores only transfers related to a configured list of Ethereum addresses
 - Serves transaction history by address using PostgREST
 
 Sample request:
@@ -28,6 +29,8 @@ All indexed transactions contain the following database fields:
 - `contract_value`: Token transfer amount in raw token units (`citext`)
 
 To minimize storage overhead, the indexer stores native ETH transfers and ERC-20 token transfer transactions matching the `0xa9059cbb` method signature (`transfer(address,uint256)`).
+
+The internal `sync_state` table stores the last processed block independently from transaction rows. This keeps synchronization progress accurate when a block is empty or when the optional address filter excludes every transaction in a block.
 
 Example JSON record from `/ethtxs`:
 
@@ -120,8 +123,11 @@ Grant explicit minimal table permissions to `api_user`:
 ```sql
 \c index
 GRANT SELECT, INSERT, DELETE ON public.ethtxs TO api_user;
+GRANT SELECT, INSERT, UPDATE ON public.sync_state TO api_user;
 GRANT SELECT ON public.aval, public.max_block TO api_user;
 ```
+
+Existing deployments must reapply `create_tables.sql` before starting this version. The idempotent script creates `sync_state`, initializes it from the existing highest transaction block, and updates the `/max_block` view without deleting transaction data.
 
 #### Read-Only Anonymous Role (`web_anon`)
 
@@ -214,14 +220,45 @@ DROP INDEX CONCURRENTLY IF EXISTS public.txto_txfrom_index;
 
 #### Environment Variables
 
-| Variable              | Default      | Description                                                                   |
-| --------------------- | ------------ | ----------------------------------------------------------------------------- |
-| `DB_NAME`             | _(required)_ | PostgreSQL database name (e.g., `index`) or connection URI                    |
-| `ETH_URL`             | _(required)_ | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
-| `START_BLOCK`         | `1`          | Starting block height when indexing from an empty database                    |
-| `CONFIRMATIONS_BLOCK` | `0`          | Number of confirmation blocks to lag behind the chain head                    |
-| `PERIOD`              | `20`         | Polling interval in seconds between synchronization passes                    |
-| `LOG_FILE`            | `None`       | File path for logging (if omitted, logs to stdout stream)                     |
+| Variable                 | Default         | Description                                                                   |
+| ------------------------ | --------------- | ----------------------------------------------------------------------------- |
+| `DB_NAME`                | _(required)_    | PostgreSQL database name (e.g., `index`) or connection URI                    |
+| `ETH_URL`                | _(required)_    | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `START_BLOCK`            | `1`             | Starting block height when indexing from an empty database                    |
+| `CONFIRMATIONS_BLOCK`    | `0`             | Number of confirmation blocks to lag behind the chain head                    |
+| `PERIOD`                 | `20`            | Polling interval in seconds between synchronization passes                    |
+| `LOG_FILE`               | `None`          | File path for logging (if omitted, logs to stdout stream)                     |
+| `ADDRESS_FILTER_ENABLED` | `false`         | Enables the monitored-address filter                                          |
+| `ADDRESS_FILTER_FILE`    | `addresses.txt` | Path to the monitored-address list                                            |
+
+Copy the documented environment template before the first run:
+
+```bash
+cp .env.example .env
+```
+
+The local `.env` contains all indexer, PostgreSQL, and PostgREST variables used by Docker Compose and is intentionally ignored by Git. `ethsync.py`, `ethtest.py`, and `pgtest.py` load this file automatically. Values already present in the process environment take precedence, so standalone runs can override individual settings without editing `.env`:
+
+```bash
+DB_NAME=index \
+ETH_URL=http://127.0.0.1:8545 \
+PERIOD=20 \
+python3 ethsync.py
+```
+
+#### Address Filter
+
+The address filter reduces database storage by retaining only native ETH and ERC-20 transfers related to monitored addresses. To enable it:
+
+1. Add one `0x`-prefixed, 40-hex-character Ethereum address per line to `addresses.txt`. Empty lines, full-line comments, and text after `#` are ignored.
+2. Set `ADDRESS_FILTER_ENABLED=true` in `.env` or in the process environment.
+3. Start or restart the indexer.
+
+Matching is case-insensitive. Native transfers match `txfrom` or `txto`; ERC-20 transfers also match the token contract in `txto` and the ABI-encoded recipient stored in `contract_to`. For the supported `transfer(address,uint256)` call, the token sender is the transaction's `txfrom` value.
+
+The list is reloaded before every synchronization pass, so valid additions and removals take effect without a restart. An enabled filter fails closed: a missing, empty, or invalid file prevents further block processing until the configuration is corrected.
+
+The filter affects only newly processed blocks. Enabling it does not remove existing rows, and adding an address does not automatically backfill its earlier history. To rebuild filtered history, stop the indexer, reset the transaction data and `sync_state` to the intended starting point, set `START_BLOCK`, and restart it.
 
 #### Starting from a Specific Block Height
 
@@ -252,7 +289,7 @@ Run `ethsync.py` as a systemd service for automatic restarts on failure.
 sudo cp ethsync.service /etc/systemd/system/ethsync.service
 ```
 
-2. Edit `/etc/systemd/system/ethsync.service` with your environment values and paths.
+2. Edit the repository `.env` with your environment values and update `WorkingDirectory`, `ExecStart`, and `EnvironmentFile` paths in `/etc/systemd/system/ethsync.service` when needed.
 
 3. Enable and start the service:
 
@@ -371,6 +408,8 @@ A complete multi-container setup is available in `docker-compose.yml`:
 - `postgrest`: PostgREST configured with `web_anon` role and `PGRST_DB_MAX_ROWS=10000`
 - `publicnode`: Local Geth node in dev mode (for testing)
 - `eth-storage`: Python indexer service
+
+Docker Compose reads the local `.env` file and mounts the configured `ADDRESS_FILTER_FILE` read-only into the indexer container. Use a repository-relative path for this variable with Docker Compose. Review the example credentials and all endpoint values before using the stack outside local development.
 
 Start the containers:
 

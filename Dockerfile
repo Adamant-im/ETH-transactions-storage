@@ -9,7 +9,7 @@ WORKDIR /eth-storage
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY package.json ethsync.py ethtest.py pgtest.py ./
+COPY package.json address_filter.py addresses.txt ethsync.py ethtest.py pgtest.py ./
 
 ENV DB_NAME=index
 
