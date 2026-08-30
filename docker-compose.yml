@@ -4,14 +4,14 @@ services:
     ports:
       - '5432:5432'
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+      POSTGRES_USER: ${POSTGRES_USER:-app_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
       - ./create_tables.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-app_user} -d ${POSTGRES_DB:-app_db}']
       interval: 5s
       timeout: 15s
       retries: 5
@@ -21,11 +21,11 @@ services:
     ports:
       - '3000:3000'
     environment:
-      PGRST_DB_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      PGRST_DB_SCHEMA: ${PGRST_DB_SCHEMA}
-      PGRST_DB_ANON_ROLE: ${PGRST_DB_ANON_ROLE}
-      PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS}
-      PGRST_OPENAPI_SERVER_PROXY_URI: ${PGRST_OPENAPI_SERVER_PROXY_URI}
+      PGRST_DB_URI: postgres://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app_db}
+      PGRST_DB_SCHEMA: ${PGRST_DB_SCHEMA:-public}
+      PGRST_DB_ANON_ROLE: ${PGRST_DB_ANON_ROLE:-web_anon}
+      PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS:-10000}
+      PGRST_OPENAPI_SERVER_PROXY_URI: ${PGRST_OPENAPI_SERVER_PROXY_URI:-http://127.0.0.1:3000}
     depends_on:
       - db
 
@@ -45,7 +45,7 @@ services:
   eth-storage:
     build: .
     environment:
-      DB_NAME: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DB_NAME: postgres://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app_db}
       ETH_URL: ${DOCKER_ETH_URL:-ws://publicnode:8546}
       START_BLOCK: ${START_BLOCK:-1}
       CONFIRMATIONS_BLOCK: ${CONFIRMATIONS_BLOCK:-0}

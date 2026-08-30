@@ -90,6 +90,7 @@ If sources disagree:
 | ------------------------ | ---------------------- | ----------------------------------------------------------------------------- |
 | `DB_NAME`                | _(required)_           | PostgreSQL database name or connection URI                                    |
 | `ETH_URL`                | _(required)_           | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `DOCKER_ETH_URL`         | `ws://publicnode:8546` | Ethereum node RPC endpoint used only by Docker Compose                        |
 | `START_BLOCK`            | `1`                    | Starting block height when database is empty                                  |
 | `CONFIRMATIONS_BLOCK`    | `0`                    | Number of trailing confirmation blocks to exclude from sync                   |
 | `PERIOD`                 | `20`                   | Polling interval in seconds between synchronization passes                    |
@@ -144,7 +145,7 @@ GET /aval
 
 - Never expose write permissions to public API consumers
 - Configure PostgREST with a dedicated read-only role (`web_anon`) having only `SELECT` privileges on `public.ethtxs`, `public.aval`, and `public.max_block`
-- The indexer user (`api_user`) requires only DML grants (`SELECT`, `INSERT`, `DELETE`) on indexing tables and does not require PostgreSQL superuser privileges
+- The indexer user (`api_user`) requires `SELECT`, `INSERT`, and `DELETE` on `public.ethtxs`, plus `SELECT`, `INSERT`, and `UPDATE` on `public.sync_state`, and does not require PostgreSQL superuser privileges
 - Enforce `db-max-rows = 10000` in PostgREST configuration to cap returned row volumes and prevent out-of-memory crashes on unbounded queries
 - In reverse proxy configurations (nginx), enforce:
   - An HTTP method allow-list (`GET`, `HEAD`, `OPTIONS`) on public endpoints (`/ethtxs`, `/aval`, `/max_block`) to reject unexpected write verbs at the edge

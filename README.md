@@ -115,7 +115,7 @@ createdb -O api_user index
 Apply table schemas, views, and read-only roles using `create_tables.sql`:
 
 ```bash
-psql -d index -f create_tables.sql
+psql -v ON_ERROR_STOP=1 -d index -f create_tables.sql
 ```
 
 Grant explicit minimal table permissions to `api_user`:
@@ -134,9 +134,9 @@ Existing deployments must reapply `create_tables.sql` before starting this versi
 Use this order for an existing bare-metal or systemd deployment:
 
 1. Stop the indexer so the database checkpoint and deployed code cannot diverge.
-2. Update the checkout, including `ethsync.py`, `address_filter.py`, and `requirements.txt`.
+2. Update the full checkout so all runtime modules, dependencies, and schema files stay synchronized.
 3. Run `pip3 install -r requirements.txt` to install `python-dotenv` before starting the new code.
-4. Run `psql -d index -f create_tables.sql` as a role allowed to update the schema and grants.
+4. Run `psql -v ON_ERROR_STOP=1 -d index -f create_tables.sql` as a role allowed to update the schema and grants.
 5. Verify that the existing service environment still contains the production `DB_NAME`, `ETH_URL`, `START_BLOCK`, `CONFIRMATIONS_BLOCK`, `PERIOD`, and `LOG_FILE` values. The previous systemd unit can remain in place because process environment values override `.env` and the address filter defaults to disabled.
 6. Start the indexer and verify that `/max_block` advances.
 
@@ -237,6 +237,7 @@ DROP INDEX CONCURRENTLY IF EXISTS public.txto_txfrom_index;
 | ------------------------ | ---------------------- | ----------------------------------------------------------------------------- |
 | `DB_NAME`                | _(required)_           | PostgreSQL database name (e.g., `index`) or connection URI                    |
 | `ETH_URL`                | _(required)_           | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `DOCKER_ETH_URL`         | `ws://publicnode:8546` | Ethereum node RPC endpoint used only by Docker Compose                        |
 | `START_BLOCK`            | `1`                    | Starting block height when indexing from an empty database                    |
 | `CONFIRMATIONS_BLOCK`    | `0`                    | Number of confirmation blocks to lag behind the chain head                    |
 | `PERIOD`                 | `20`                   | Polling interval in seconds between synchronization passes                    |
@@ -465,7 +466,7 @@ PostgreSQL executes `/docker-entrypoint-initdb.d/create_tables.sql` only when it
 
 ```bash
 docker compose exec -T db sh -c \
-  'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
+  'psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
   < create_tables.sql
 ```
 

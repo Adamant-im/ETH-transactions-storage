@@ -316,7 +316,7 @@ while True:
             else:
                 logger.info(f"Block {block_height} contains no transactions")
 
-            if address_filter_enabled:
+            if address_filter_enabled and inserted_transactions > 0:
                 logger.info(
                     f"Address filter stored {inserted_transactions} transactions "
                     f"from block {block_height}"
