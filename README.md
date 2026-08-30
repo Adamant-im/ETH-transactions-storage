@@ -127,7 +127,20 @@ GRANT SELECT, INSERT, UPDATE ON public.sync_state TO api_user;
 GRANT SELECT ON public.aval, public.max_block TO api_user;
 ```
 
-Existing deployments must reapply `create_tables.sql` before starting this version. The idempotent script creates `sync_state`, initializes it from the existing highest transaction block, and updates the `/max_block` view without deleting transaction data.
+Existing deployments must reapply `create_tables.sql` before starting this version. The idempotent script creates `sync_state`, initializes it from the existing highest transaction block, grants its DML permissions to existing `api_user` and `app_user` roles, and updates the `/max_block` view without deleting transaction data.
+
+#### Production Upgrade Order
+
+Use this order for an existing bare-metal or systemd deployment:
+
+1. Stop the indexer so the database checkpoint and deployed code cannot diverge.
+2. Update the checkout, including `ethsync.py`, `address_filter.py`, and `requirements.txt`.
+3. Run `pip3 install -r requirements.txt` to install `python-dotenv` before starting the new code.
+4. Run `psql -d index -f create_tables.sql` as a role allowed to update the schema and grants.
+5. Verify that the existing service environment still contains the production `DB_NAME`, `ETH_URL`, `START_BLOCK`, `CONFIRMATIONS_BLOCK`, `PERIOD`, and `LOG_FILE` values. The previous systemd unit can remain in place because process environment values override `.env` and the address filter defaults to disabled.
+6. Start the indexer and verify that `/max_block` advances.
+
+Do not replace an existing systemd unit with the repository template until a production `.env` containing equivalent values has been created. The repository `.env.example` uses safe standalone defaults, but every endpoint, credential, and starting block still requires operator review.
 
 #### Read-Only Anonymous Role (`web_anon`)
 
@@ -220,24 +233,27 @@ DROP INDEX CONCURRENTLY IF EXISTS public.txto_txfrom_index;
 
 #### Environment Variables
 
-| Variable                 | Default         | Description                                                                   |
-| ------------------------ | --------------- | ----------------------------------------------------------------------------- |
-| `DB_NAME`                | _(required)_    | PostgreSQL database name (e.g., `index`) or connection URI                    |
-| `ETH_URL`                | _(required)_    | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
-| `START_BLOCK`            | `1`             | Starting block height when indexing from an empty database                    |
-| `CONFIRMATIONS_BLOCK`    | `0`             | Number of confirmation blocks to lag behind the chain head                    |
-| `PERIOD`                 | `20`            | Polling interval in seconds between synchronization passes                    |
-| `LOG_FILE`               | `None`          | File path for logging (if omitted, logs to stdout stream)                     |
-| `ADDRESS_FILTER_ENABLED` | `false`         | Enables the monitored-address filter                                          |
-| `ADDRESS_FILTER_FILE`    | `addresses.txt` | Path to the monitored-address list                                            |
+| Variable                 | Default                | Description                                                                   |
+| ------------------------ | ---------------------- | ----------------------------------------------------------------------------- |
+| `DB_NAME`                | _(required)_           | PostgreSQL database name (e.g., `index`) or connection URI                    |
+| `ETH_URL`                | _(required)_           | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `START_BLOCK`            | `1`                    | Starting block height when indexing from an empty database                    |
+| `CONFIRMATIONS_BLOCK`    | `0`                    | Number of confirmation blocks to lag behind the chain head                    |
+| `PERIOD`                 | `20`                   | Polling interval in seconds between synchronization passes                    |
+| `LOG_FILE`               | `None`                 | File path for logging (if omitted, logs to stdout stream)                     |
+| `ADDRESS_FILTER_ENABLED` | `false`                | Enables the monitored-address filter                                          |
+| `ADDRESS_FILTER_FILE`    | `filter/addresses.txt` | Path to the monitored-address list                                            |
 
 Copy the documented environment template before the first run:
 
 ```bash
 cp .env.example .env
+chmod 600 .env
 ```
 
-The local `.env` contains all indexer, PostgreSQL, and PostgREST variables used by Docker Compose and is intentionally ignored by Git. `ethsync.py`, `ethtest.py`, and `pgtest.py` load this file automatically. Values already present in the process environment take precedence, so standalone runs can override individual settings without editing `.env`:
+The local `.env` contains standalone indexer settings and Docker Compose service settings and is intentionally ignored by Git. `ethsync.py`, `ethtest.py`, and `pgtest.py` load this file automatically. Values already present in the process environment take precedence, so standalone runs can override individual settings without editing `.env`. Docker Compose constructs its internal PostgreSQL URIs from `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD`, leaving the password in one configuration field.
+
+Use only URL-safe letters, digits, periods, underscores, tildes, and hyphens for `POSTGRES_PASSWORD`. Avoid `$`, which Docker Compose treats as interpolation, and URI delimiter characters such as `:`, `/`, and `@`.
 
 ```bash
 DB_NAME=index \
@@ -248,17 +264,31 @@ python3 ethsync.py
 
 #### Address Filter
 
-The address filter reduces database storage by retaining only native ETH and ERC-20 transfers related to monitored addresses. To enable it:
+The address filter reduces database storage by retaining only native ETH and ERC-20 transfers related to monitored addresses. The live list is private and ignored by Git and Docker image builds. To enable it:
 
-1. Add one `0x`-prefixed, 40-hex-character Ethereum address per line to `addresses.txt`. Empty lines, full-line comments, and text after `#` are ignored.
-2. Set `ADDRESS_FILTER_ENABLED=true` in `.env` or in the process environment.
-3. Start or restart the indexer.
+1. Run `cp filter/addresses.txt.example filter/addresses.txt` and `chmod 600 filter/addresses.txt`.
+2. Add one `0x`-prefixed, 40-hex-character Ethereum address per line. Empty lines, full-line comments, and text after `#` are ignored.
+3. Set `ADDRESS_FILTER_ENABLED=true` in `.env` or in the process environment.
+4. Start or restart the indexer.
 
 Matching is case-insensitive. Native transfers match `txfrom` or `txto`; ERC-20 transfers also match the token contract in `txto` and the ABI-encoded recipient stored in `contract_to`. For the supported `transfer(address,uint256)` call, the token sender is the transaction's `txfrom` value.
 
+The indexer does not store internal ETH transfers or ERC-20 transfers that are not direct `transfer(address,uint256)` calls, including `transferFrom`, multisig, router, batch, and aggregator flows. These are existing indexer limitations and remain outside the filter's visibility.
+
 The list is reloaded before every synchronization pass, so valid additions and removals take effect without a restart. An enabled filter fails closed: a missing, empty, or invalid file prevents further block processing until the configuration is corrected.
 
-The filter affects only newly processed blocks. Enabling it does not remove existing rows, and adding an address does not automatically backfill its earlier history. To rebuild filtered history, stop the indexer, reset the transaction data and `sync_state` to the intended starting point, set `START_BLOCK`, and restart it.
+The filter affects only newly processed blocks. Enabling it does not remove existing rows, and adding an address does not automatically backfill its earlier history.
+
+To rebuild all filtered history, stop the indexer, set `START_BLOCK` to the intended first block, and reset both transaction data and the checkpoint:
+
+```sql
+BEGIN;
+TRUNCATE TABLE public.ethtxs;
+TRUNCATE TABLE public.sync_state;
+COMMIT;
+```
+
+Truncating only `ethtxs` does not trigger a rebuild because `sync_state` still records the processed chain height. For a partial rescan from block `N`, delete transaction rows at or above `N` and set the singleton checkpoint to `N - 1` in the same database transaction before restarting.
 
 #### Starting from a Specific Block Height
 
@@ -283,13 +313,22 @@ python3 /home/api_user/ETH-transactions-storage/ethsync.py
 
 Run `ethsync.py` as a systemd service for automatic restarts on failure.
 
-1. Copy service file:
+For a new installation, create and secure the required environment file first:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+Replace the example values with production endpoints, credentials, block settings, and log paths. The systemd template intentionally requires this file so a missing production configuration fails before the indexer starts.
+
+1. Copy the service file:
 
 ```bash
 sudo cp ethsync.service /etc/systemd/system/ethsync.service
 ```
 
-2. Edit the repository `.env` with your environment values and update `WorkingDirectory`, `ExecStart`, and `EnvironmentFile` paths in `/etc/systemd/system/ethsync.service` when needed.
+2. Update `WorkingDirectory`, `ExecStart`, and `EnvironmentFile` paths in `/etc/systemd/system/ethsync.service` when needed.
 
 3. Enable and start the service:
 
@@ -409,12 +448,31 @@ A complete multi-container setup is available in `docker-compose.yml`:
 - `publicnode`: Local Geth node in dev mode (for testing)
 - `eth-storage`: Python indexer service
 
-Docker Compose reads the local `.env` file and mounts the configured `ADDRESS_FILTER_FILE` read-only into the indexer container. Use a repository-relative path for this variable with Docker Compose. Review the example credentials and all endpoint values before using the stack outside local development.
+Docker Compose reads the local `.env` file and mounts the repository `filter` directory read-only into the indexer container. Keep `ADDRESS_FILTER_FILE` inside that directory when using Compose. Review the example credentials and all endpoint values before using the stack outside local development.
+
+Prepare local configuration before the first start:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+cp filter/addresses.txt.example filter/addresses.txt
+chmod 600 filter/addresses.txt
+```
+
+Compose mounts the `filter` directory rather than one file, so atomic-save editors that replace `filter/addresses.txt` remain visible to the running container during the next synchronization pass.
+
+PostgreSQL executes `/docker-entrypoint-initdb.d/create_tables.sql` only when its data directory is empty. Before starting the new indexer against an existing Compose volume, apply the schema explicitly:
+
+```bash
+docker compose exec -T db sh -c \
+  'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
+  < create_tables.sql
+```
 
 Start the containers:
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
 ```
 
 ## API Request Examples

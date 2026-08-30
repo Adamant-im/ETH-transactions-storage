@@ -10,8 +10,8 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint:md": "markdownlint-cli \"**/*.md\" --ignore .ai-ignored --ignore .ai-tasks --ignore node_modules",
-    "lint:py": "python3 -m py_compile address_filter.py ethsync.py ethtest.py pgtest.py test_address_filter.py",
-    "test": "python3 -m unittest test_address_filter.py"
+    "lint:py": "python3 -m py_compile address_filter.py database.py ethsync.py ethtest.py pgtest.py test_address_filter.py test_database.py",
+    "test": "python3 -m unittest test_address_filter.py test_database.py"
   },
   "keywords": [
     "adm",

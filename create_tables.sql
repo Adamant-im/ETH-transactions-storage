@@ -54,9 +54,11 @@ BEGIN
     END IF;
     IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'api_user') THEN
         GRANT web_anon TO api_user;
+        GRANT SELECT, INSERT, UPDATE ON public.sync_state TO api_user;
     END IF;
     IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
         GRANT web_anon TO app_user;
+        GRANT SELECT, INSERT, UPDATE ON public.sync_state TO app_user;
     END IF;
 END
 $$;

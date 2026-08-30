@@ -21,7 +21,7 @@ services:
     ports:
       - '3000:3000'
     environment:
-      PGRST_DB_URI: ${PGRST_DB_URI}
+      PGRST_DB_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       PGRST_DB_SCHEMA: ${PGRST_DB_SCHEMA}
       PGRST_DB_ANON_ROLE: ${PGRST_DB_ANON_ROLE}
       PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS}
@@ -45,16 +45,16 @@ services:
   eth-storage:
     build: .
     environment:
-      DB_NAME: ${DB_NAME}
-      ETH_URL: ${ETH_URL}
-      START_BLOCK: ${START_BLOCK}
-      CONFIRMATIONS_BLOCK: ${CONFIRMATIONS_BLOCK}
-      PERIOD: ${PERIOD}
-      LOG_FILE: ${LOG_FILE}
-      ADDRESS_FILTER_ENABLED: ${ADDRESS_FILTER_ENABLED}
-      ADDRESS_FILTER_FILE: ${ADDRESS_FILTER_FILE}
+      DB_NAME: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      ETH_URL: ${DOCKER_ETH_URL:-ws://publicnode:8546}
+      START_BLOCK: ${START_BLOCK:-1}
+      CONFIRMATIONS_BLOCK: ${CONFIRMATIONS_BLOCK:-0}
+      PERIOD: ${PERIOD:-20}
+      LOG_FILE: ${LOG_FILE:-}
+      ADDRESS_FILTER_ENABLED: ${ADDRESS_FILTER_ENABLED:-false}
+      ADDRESS_FILTER_FILE: ${ADDRESS_FILTER_FILE:-filter/addresses.txt}
     volumes:
-      - ./${ADDRESS_FILTER_FILE}:/eth-storage/${ADDRESS_FILTER_FILE}:ro
+      - ./filter:/eth-storage/filter:ro
     depends_on:
       db:
         condition: service_healthy

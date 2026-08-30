@@ -17,7 +17,6 @@ from pathlib import Path
 import sys
 import time
 
-import psycopg2
 from dotenv import load_dotenv
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
@@ -27,6 +26,7 @@ from address_filter import (
     parse_boolean,
     transaction_matches_filter,
 )
+from database import connect_database, sanitize_database_error
 
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parent
@@ -53,7 +53,9 @@ node_url = environ.get("ETH_URL")
 polling_period = environ.get("PERIOD") or "20"
 log_file = environ.get("LOG_FILE") or None
 address_filter_enabled_value = environ.get("ADDRESS_FILTER_ENABLED") or "false"
-address_filter_file = Path(environ.get("ADDRESS_FILTER_FILE") or "addresses.txt").expanduser()
+address_filter_file = Path(
+    environ.get("ADDRESS_FILTER_FILE") or "filter/addresses.txt"
+).expanduser()
 
 if not address_filter_file.is_absolute():
     address_filter_file = PROJECT_DIRECTORY / address_filter_file
@@ -113,13 +115,21 @@ if address_filter_enabled:
 else:
     logger.info("Address filter disabled")
 
-# Connect to database and clean up the last block on startup
+# Connect to the database before initializing the checkpoint.
 try:
-    logger.info(f"Connecting to '{dbname}' database…")
-    conn = psycopg2.connect(database=dbname)
-    conn.autocommit = False
+    logger.info("Connecting to PostgreSQL database…")
+    conn = connect_database(dbname)
     logger.info("Connected to the database")
+except Exception as e:
+    logger.error(
+        f"Unable to connect to PostgreSQL database: {sanitize_database_error(e)}"
+    )
+    sys.exit(1)
 
+# Clean up the last block on startup in case it was partially indexed.
+cur = None
+try:
+    conn.autocommit = False
     # Delete last block on startup in case it was partially indexed
     cur = conn.cursor()
     cur.execute(
@@ -142,13 +152,26 @@ try:
             (last_processed_block - 1,),
         )
     conn.commit()
-    cur.close()
-    conn.close()
 except Exception as e:
-    if "conn" in locals():
+    try:
         conn.rollback()
-    logger.error(f"Unable to connect to database or clean up initial block: {e}")
+    except Exception:
+        pass
+    logger.error(
+        "Unable to initialize the database checkpoint. Apply create_tables.sql "
+        f"and verify sync_state permissions: {sanitize_database_error(e)}"
+    )
     sys.exit(1)
+finally:
+    if cur is not None:
+        try:
+            cur.close()
+        except Exception:
+            pass
+    try:
+        conn.close()
+    except Exception:
+        pass
 
 # Wait for the Ethereum node to be in sync before indexing
 while bool(web3.eth.syncing):
@@ -228,10 +251,12 @@ def insert_txs_from_block(block, cursor, address_filter=None):
 # Main synchronization loop
 while True:
     try:
-        conn = psycopg2.connect(database=dbname)
+        conn = connect_database(dbname)
         conn.autocommit = False
     except Exception as e:
-        logger.error(f"Unable to connect to database: {e}")
+        logger.error(
+            f"Unable to connect to database: {sanitize_database_error(e)}"
+        )
         time.sleep(int(polling_period))
         continue
 
@@ -284,15 +309,32 @@ while True:
                 (block_height,),
             )
             conn.commit()
-            logger.info(
-                f"Block {block_height} with {len(block.transactions)} transactions processed; "
-                f"{inserted_transactions} stored"
-            )
+            if len(block.transactions) > 0:
+                logger.info(
+                    f"Block {block_height} with {len(block.transactions)} transactions processed"
+                )
+            else:
+                logger.info(f"Block {block_height} contains no transactions")
+
+            if address_filter_enabled:
+                logger.info(
+                    f"Address filter stored {inserted_transactions} transactions "
+                    f"from block {block_height}"
+                )
     except Exception as e:
-        conn.rollback()
-        logger.error(f"Error during synchronization pass: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error during synchronization pass: {sanitize_database_error(e)}")
     finally:
-        cur.close()
-        conn.close()
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
     time.sleep(int(polling_period))

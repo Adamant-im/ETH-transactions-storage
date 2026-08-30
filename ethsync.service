@@ -13,6 +13,7 @@ User=api_user
 Group=api_user
 WorkingDirectory=/home/api_user/ETH-transactions-storage
 ExecStart=/usr/bin/python3 /home/api_user/ETH-transactions-storage/ethsync.py
+# Required: create this file from .env.example and replace all production values first.
 EnvironmentFile=/home/api_user/ETH-transactions-storage/.env
 Restart=on-failure
 RestartSec=30
