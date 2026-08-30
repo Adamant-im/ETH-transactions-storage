@@ -6,6 +6,8 @@
 .idea/
 .vscode/
 .DS_Store
+.env
+filter/addresses.txt
 data/
 logs/
 node_modules/

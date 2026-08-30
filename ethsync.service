@@ -13,12 +13,8 @@ User=api_user
 Group=api_user
 WorkingDirectory=/home/api_user/ETH-transactions-storage
 ExecStart=/usr/bin/python3 /home/api_user/ETH-transactions-storage/ethsync.py
-Environment="DB_NAME=index"
-Environment="ETH_URL=http://127.0.0.1:8545"
-Environment="START_BLOCK=14600000"
-Environment="CONFIRMATIONS_BLOCK=0"
-Environment="PERIOD=20"
-Environment="LOG_FILE=/home/api_user/ETH-transactions-storage/ethsync.log"
+# Required: create this file from .env.example and replace all production values first.
+EnvironmentFile=/home/api_user/ETH-transactions-storage/.env
 Restart=on-failure
 RestartSec=30
 TimeoutSec=300

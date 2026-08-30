@@ -67,8 +67,11 @@ If sources disagree:
 
 | File / Component            | Purpose                        | Key Responsibilities                                                                                                                                  |
 | --------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ethsync.py`                | Main indexer daemon            | Connects to Ethereum RPC (HTTP/WS/IPC), polls blocks, parses ETH/ERC-20 transfers, writes to PostgreSQL, handles reorg cleanup                        |
-| `create_tables.sql`         | Base schema & views            | Creates `citext` extension, `public.ethtxs` table, `public.aval` table, `public.max_block` health-check view, and `web_anon` role                     |
+| `ethsync.py`                | Main indexer daemon            | Connects to Ethereum RPC (HTTP/WS/IPC), polls blocks, parses and filters ETH/ERC-20 transfers, writes to PostgreSQL, handles reorg cleanup            |
+| `address_filter.py`         | Address filter helpers         | Loads and validates monitored addresses, normalizes native and ABI-encoded address values, and evaluates transaction matches                          |
+| `database.py`               | PostgreSQL connection helpers  | Supports database names and connection URIs while redacting credentials from diagnostics                                                              |
+| `filter/addresses.txt`      | Monitored address list         | Ignored private file containing one Ethereum address per line for optional filtered indexing                                                          |
+| `create_tables.sql`         | Base schema & views            | Creates `citext`, storage and sync-state tables, `public.max_block` health-check view, and the `web_anon` role                                        |
 | `create_indexes.sql`        | Core database indexes (4 of 5) | Minimal core B-tree indexes for address and block lookups (`block_index`, `txfrom_index`, `txto_contract_to_index`, `txto_w_empty_contract_to_index`) |
 | `create_indexes_add.sql`    | Additional index (5 of 5)      | Timestamp descending index (`time_index`) completing the minimal 5-index set                                                                          |
 | `create_indexes_legacy.sql` | Deprecated / legacy indexes    | Optional indexes for non-standard queries (`contract_to_index`, `txto_index`, `txto_txfrom_index`)                                                    |
@@ -83,14 +86,17 @@ If sources disagree:
 
 `ethsync.py` is configured via environment variables:
 
-| Variable              | Default      | Description                                                                   |
-| --------------------- | ------------ | ----------------------------------------------------------------------------- |
-| `DB_NAME`             | _(required)_ | PostgreSQL database name or connection URI                                    |
-| `ETH_URL`             | _(required)_ | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
-| `START_BLOCK`         | `1`          | Starting block height when database is empty                                  |
-| `CONFIRMATIONS_BLOCK` | `0`          | Number of trailing confirmation blocks to exclude from sync                   |
-| `PERIOD`              | `20`         | Polling interval in seconds between synchronization passes                    |
-| `LOG_FILE`            | `None`       | Optional file path for file logging (defaults to stdout stream logging)       |
+| Variable                 | Default                | Description                                                                   |
+| ------------------------ | ---------------------- | ----------------------------------------------------------------------------- |
+| `DB_NAME`                | _(required)_           | PostgreSQL database name or connection URI                                    |
+| `ETH_URL`                | _(required)_           | Ethereum node RPC endpoint (`http://...`, `ws://...`, or `/path/to/geth.ipc`) |
+| `DOCKER_ETH_URL`         | `ws://publicnode:8546` | Ethereum node RPC endpoint used only by Docker Compose                        |
+| `START_BLOCK`            | `1`                    | Starting block height when database is empty                                  |
+| `CONFIRMATIONS_BLOCK`    | `0`                    | Number of trailing confirmation blocks to exclude from sync                   |
+| `PERIOD`                 | `20`                   | Polling interval in seconds between synchronization passes                    |
+| `LOG_FILE`               | `None`                 | Optional file path for file logging (defaults to stdout stream logging)       |
+| `ADDRESS_FILTER_ENABLED` | `false`                | Enables storage filtering by the configured monitored-address list            |
+| `ADDRESS_FILTER_FILE`    | `filter/addresses.txt` | Path to the monitored-address list                                            |
 
 ## Client Integration Contracts
 
@@ -132,13 +138,14 @@ GET /aval
 - Use the minimal 5-index set (`create_indexes.sql` + `create_indexes_add.sql`) as default, saving ~90–110 GB per 1-year dataset (~490M rows) compared to legacy sets
 - Be aware of lock contention: `CREATE INDEX` takes a `ShareLock` that blocks `ethsync.py` inserts; recommend `CREATE INDEX CONCURRENTLY` in production deployment documentation
 - In `ethsync.py`, ensure idempotent startup: remove the highest block on startup to cleanly recover from interrupted block writes
+- Track the last processed block in `public.sync_state` so filtered or empty blocks do not get scanned repeatedly
 - Use parameterized SQL queries (`%s` placeholders in psycopg2) for all database operations to eliminate SQL injection risks
 
 ## Security and Access Control Rules
 
 - Never expose write permissions to public API consumers
 - Configure PostgREST with a dedicated read-only role (`web_anon`) having only `SELECT` privileges on `public.ethtxs`, `public.aval`, and `public.max_block`
-- The indexer user (`api_user`) requires only DML grants (`SELECT`, `INSERT`, `DELETE`) on indexing tables and does not require PostgreSQL superuser privileges
+- The indexer user (`api_user`) requires `SELECT`, `INSERT`, and `DELETE` on `public.ethtxs`, plus `SELECT`, `INSERT`, and `UPDATE` on `public.sync_state`, and does not require PostgreSQL superuser privileges
 - Enforce `db-max-rows = 10000` in PostgREST configuration to cap returned row volumes and prevent out-of-memory crashes on unbounded queries
 - In reverse proxy configurations (nginx), enforce:
   - An HTTP method allow-list (`GET`, `HEAD`, `OPTIONS`) on public endpoints (`/ethtxs`, `/aval`, `/max_block`) to reject unexpected write verbs at the edge

@@ -1,7 +1,11 @@
 from os import environ
+from pathlib import Path
 import sys
 
+from dotenv import load_dotenv
 from web3 import Web3
+
+load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 node_url = environ.get("ETH_URL") or "http://127.0.0.1:8545"
 
