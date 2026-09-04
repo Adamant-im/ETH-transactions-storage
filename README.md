@@ -57,24 +57,16 @@ Full walkthrough: [Docker Compose quick start](https://eth-indexer.docs.adamant.
 
 ### Manual and systemd
 
-```bash
-pip3 install -r requirements.txt
-sudo -u postgres createuser api_user
-sudo -u postgres createdb -O api_user index
-sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_tables.sql
-DB_NAME=index ETH_URL=http://127.0.0.1:8545 START_BLOCK=21000000 python3 ethsync.py
-```
+Follow the [Manual and systemd quick start](https://eth-indexer.docs.adamant.im/guide/quick-start-manual) for the complete installation sequence. Apply the schema and required grants as a PostgreSQL administrator, then configure and start the indexer as the unprivileged `api_user`. The guide also covers the systemd unit and PostgREST setup.
 
-Schema setup needs a PostgreSQL administrator; the indexer itself runs as the unprivileged `api_user`. Grants and the full walkthrough are in the manual quick start.
-
-Then create the query indexes once the initial backfill has caught up:
+Once the initial backfill has caught up, create the query indexes as the PostgreSQL administrator:
 
 ```bash
-psql -d index -f create_indexes.sql
-psql -d index -f create_indexes_add.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_indexes.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_indexes_add.sql
 ```
 
-Full walkthrough, including the systemd unit and PostgREST: [Manual and systemd quick start](https://eth-indexer.docs.adamant.im/guide/quick-start-manual).
+Index maintenance requires the table owner or an administrator; the indexer's runtime grants do not permit it. On a live database, use `CREATE INDEX CONCURRENTLY` or a maintenance window, as described in the [index guide](https://eth-indexer.docs.adamant.im/reference/database#index-strategy).
 
 ## API at a Glance
 

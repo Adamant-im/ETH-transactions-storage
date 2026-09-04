@@ -103,12 +103,14 @@ psql -d index -c 'SELECT * FROM public.max_block;'
 
 ## 5. Create Indexes After the Backfill
 
-Let the indexer reach the chain head first, then build the query indexes:
+Let the indexer reach the chain head first, then build the query indexes as the PostgreSQL administrator:
 
 ```bash
-psql -d index -f create_indexes.sql
-psql -d index -f create_indexes_add.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_indexes.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_indexes_add.sql
 ```
+
+The schema setup creates tables owned by `postgres`. Database ownership and DML grants do not make `api_user` their owner, so its runtime permissions do not allow `CREATE INDEX`. Keep index maintenance under the table owner or administrator. The redirection lets your own shell read the SQL files without giving `postgres` access to the checkout.
 
 `CREATE INDEX` takes a `ShareLock` that blocks the indexer's inserts. On a live database, use `CREATE INDEX CONCURRENTLY` or a maintenance window. See [Database and Indexes](../reference/database.md#index-strategy).
 
