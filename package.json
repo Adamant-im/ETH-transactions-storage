@@ -58,6 +58,6 @@
   "devDependencies": {
     "markdownlint-cli": "^0.49.1",
     "prettier": "^3.5.0",
-    "vitepress": "^1.6.4"
+    "vitepress": "2.0.0-alpha.19"
   }
 }

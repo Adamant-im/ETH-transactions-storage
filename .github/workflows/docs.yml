@@ -6,6 +6,13 @@ name: Docs
 # Only trusted repository content is deployed: published releases, pushes to the
 # default branch, and manual runs. Pull requests are validated by docs-build.yml
 # and never reach the Pages environment.
+#
+# One-time repository prerequisites, both of which need repository admin rights:
+#   1. Settings > Pages > Source: GitHub Actions
+#   2. Settings > Pages > Custom domain: eth-indexer.docs.adamant.im, then
+#      Enforce HTTPS once GitHub has provisioned the certificate
+# The default GITHUB_TOKEN cannot perform either step, so the first run fails
+# until they are done.
 
 on:
   push:
@@ -51,18 +58,20 @@ jobs:
       - name: Build docs
         run: npm run docs:build
 
+      # The artifact carries the domain for provenance and for a fallback to
+      # branch-based publishing. It does NOT configure the Pages custom domain:
+      # GitHub ignores an artifact CNAME for Actions-based deployments.
       - name: Verify the custom domain is part of the artifact
         run: |
           test -f docs/.vitepress/dist/CNAME
           grep -qx 'eth-indexer.docs.adamant.im' docs/.vitepress/dist/CNAME
 
-      # enablement creates the Pages site with the workflow build type on the
-      # first run. The custom domain comes from docs/public/CNAME, which ships
-      # inside the uploaded artifact.
+      # Requires two one-time repository settings, because the default
+      # GITHUB_TOKEN cannot create a Pages site or set a custom domain:
+      #   Settings > Pages > Source: GitHub Actions
+      #   Settings > Pages > Custom domain: eth-indexer.docs.adamant.im
       - name: Configure Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -6,15 +6,15 @@ Read this page before binding the API to anything other than `127.0.0.1`.
 
 ## Threat Model
 
-| Risk                                   | Mitigation                                            |
-| -------------------------------------- | ----------------------------------------------------- |
-| Writes or deletes through the API      | Anonymous role with `SELECT`-only grants              |
-| Out-of-memory from unbounded responses | `db-max-rows`                                         |
-| Full table scans on unindexed columns  | Reverse-proxy query validation                        |
-| Expensive exact counts                 | Reject `Prefer: count=exact` at the proxy             |
-| Deep pagination                        | Reject large `offset` values at the proxy             |
-| Credential leakage                     | File permissions, redacted logs, no secrets in images |
-| Address-list disclosure                | `filter/addresses.txt` ignored by Git and Docker      |
+| Risk                                   | Mitigation                                              |
+| -------------------------------------- | ------------------------------------------------------- |
+| Writes or deletes through the API      | Anonymous role with `SELECT`-only grants                |
+| Out-of-memory from unbounded responses | `db-max-rows`                                           |
+| Full table scans on unindexed columns  | Reverse-proxy predicate check, plus `statement_timeout` |
+| Expensive exact counts                 | Reject `Prefer: count=exact` at the proxy               |
+| Deep pagination                        | Reject large `offset` values at the proxy               |
+| Credential leakage                     | File permissions, redacted logs, no secrets in images   |
+| Address-list disclosure                | `filter/addresses.txt` ignored by Git and Docker        |
 
 ## Read-Only Database Access
 
@@ -56,10 +56,12 @@ location /ethtxs {
     # 1. The API is read-only; reject write verbs at the edge
     if ($request_method !~ ^(GET|HEAD|OPTIONS)$) { return 405; }
 
-    # 2. Require an indexed address predicate.
-    # Without txfrom or txto the query falls back to a sequential scan
-    # over the whole table, which is hundreds of gigabytes on a full index.
-    if ($args !~ "(txfrom|txto)") { return 400; }
+    # 2. Require an address equality predicate on txfrom or txto.
+    # Matches the flat form (txfrom=eq.0x...) and the nested form used inside
+    # and=(...)/or=(...) (txfrom.eq.0x...). Without one, the query has no
+    # usable index and falls back to a sequential scan over the whole table,
+    # which is hundreds of gigabytes on a full index.
+    if ($args !~ "(txfrom|txto)(=|\.)eq\.0x[0-9a-fA-F]{40}") { return 400; }
 
     # 3. Reject exact counts, which force a full index or table scan
     if ($http_prefer ~* "count=") { return 400; }
@@ -87,6 +89,22 @@ Notes on these rules:
 - `txhash` is not in the minimal index set on purpose. Look transactions up by hash through the node's `eth_getTransactionByHash` instead of scanning the table
 - Consider adding `limit_req` rate limiting and a request timeout. Neither is in the snippet because sensible values depend entirely on your traffic
 - Terminate TLS at the proxy. PostgREST should keep listening on `127.0.0.1`
+
+### These Rules Are Heuristics
+
+The proxy matches on the raw query string; it does not parse it. Requiring the pattern `txfrom.eq.0x…` or `txto.eq.0x…` rejects the obvious abuse — a bare `/ethtxs`, or a request whose only filter is on unindexed `txhash` while `txfrom` merely appears in `select=` — but it cannot guarantee that the address predicate is combined with `and` rather than `or`, that it is the only filter, or that no second unindexed predicate rides along with it.
+
+An earlier revision of this guard matched the substring `txfrom` or `txto` anywhere in the query string, which a request like `/ethtxs?txhash=eq.<hash>&select=txfrom` satisfies while still scanning the whole table. If you copied that rule from an older revision of this project, tighten it.
+
+Add the bound that does not depend on pattern matching:
+
+```sql
+ALTER ROLE web_anon SET statement_timeout = '5s';
+```
+
+`db-max-rows` caps the rows a request returns. `statement_timeout` caps the work it is allowed to do, which is the part a regex cannot see. Together they put a ceiling on any single request regardless of how it is shaped. Set the value above your slowest legitimate query, measured against your own dataset rather than guessed, since a cold cache on a large index is much slower than a warm one.
+
+If you need a hard guarantee that only known query shapes reach the database, put a small validating service in front of PostgREST that parses the query string and allow-lists the exact shapes your clients use. Extending the regex further is not a path to that guarantee.
 
 ## Only Expose What You Need
 

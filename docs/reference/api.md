@@ -97,11 +97,32 @@ All transfers of one token, regardless of participant:
 curl -s "http://127.0.0.1:3000/ethtxs?txto=eq.0xdac17f958d2ee523a2206206994597c13d831ec7&order=time.desc&limit=100"
 ```
 
-Everything an address did, native and tokens together:
+### Full History for an Address
+
+There is no single predicate that returns every transfer involving an address, because the address lands in a different column depending on the row:
+
+| Row                           | `txfrom` | `txto`         | `contract_to` |
+| ----------------------------- | -------- | -------------- | ------------- |
+| Native transfer, either way   | address  | address        | `''`          |
+| Token transfer sent by it     | address  | token contract | recipient     |
+| Token transfer received by it | sender   | token contract | address       |
+
+A query on `txfrom` and `txto` alone therefore covers the first two rows and silently omits incoming token transfers:
 
 ```bash
+# Native transfers plus tokens the address SENT. Incoming tokens are missing.
 curl -s "http://127.0.0.1:3000/ethtxs?or=(txfrom.eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98,txto.eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98)&order=time.desc&limit=25"
 ```
+
+For complete history, run the native query above together with one per-token query for each token you track, and merge client-side. That is what production consumers do, and every request stays on an index.
+
+To catch incoming transfers of any token in a single request, add the ABI-encoded recipient as a third branch:
+
+```bash
+curl -s "http://127.0.0.1:3000/ethtxs?or=(txfrom.eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98,txto.eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98,contract_to.eq.000000000000000000000000fbb1b73c4f0bda4f67dca266ce6ef42f520fbb98)&order=time.desc&limit=25"
+```
+
+The third branch has no supporting index in the recommended set, because `txto_contract_to_index` is only usable with a `txto` predicate. It needs `contract_to_index` from `create_indexes_legacy.sql`, which costs disk. Do not put this shape on a public endpoint without that index. See [Database and Indexes](./database.md#index-strategy).
 
 ## Filtering
 
@@ -146,13 +167,25 @@ curl -s -H "Range-Unit: items" -H "Range: 0-24" \
   "http://127.0.0.1:3000/ethtxs?txfrom=eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98&contract_to=eq.&order=time.desc"
 ```
 
-Offsets get linearly slower, and public deployments commonly reject offsets above a threshold. For deep history, paginate on `time` using the last row you received:
+Offsets get linearly slower, and public deployments commonly reject offsets above a threshold.
+
+For deep history, use keyset pagination. `time` alone is not a usable cursor: every transaction in a block shares one timestamp, so a block with more matching transfers than `limit` breaks it in both directions. `time=lt.T` skips the rest of that timestamp, and `time=lte.T` returns the same rows again, because the ordering has no tiebreaker for equal timestamps. De-duplicating does not help — the page is simply never allowed to advance past the boundary.
+
+Order by a unique tiebreaker as well, and carry both values in the cursor. `txhash` works: it is unique per transaction and always present.
 
 ```bash
-curl -s "http://127.0.0.1:3000/ethtxs?txfrom=eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98&contract_to=eq.&time=lt.1735689600&order=time.desc&limit=25"
+# First page
+curl -s "http://127.0.0.1:3000/ethtxs?txfrom=eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98&contract_to=eq.&order=time.desc,txhash.desc&limit=25"
+
+# Next page, using time and txhash of the last row received
+curl -s "http://127.0.0.1:3000/ethtxs?txfrom=eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98&contract_to=eq.&or=(time.lt.1735689600,and(time.eq.1735689600,txhash.lt.0xcf56a031dfc89f5a3686cd441ea97ae96a66f5809a4c8c1b370485a04fb37e0e))&order=time.desc,txhash.desc&limit=25"
 ```
 
-Two caveats: every transaction in a block shares one timestamp, so a strict `lt` boundary can skip same-second rows — use `lte` plus client-side de-duplication when exactness matters. And `Prefer: count=exact` forces a full scan of the matching set; use `count=planned` or omit it.
+Every page walks the full timestamp boundary before moving on, returns each row exactly once, and needs no client-side de-duplication. Stop when a page returns fewer rows than `limit`.
+
+The address predicate still selects the rows through its index; the composite ordering and the cursor comparison are applied to that result set, which is why this stays cheap for per-address history and would not be for an unfiltered query.
+
+Separately, `Prefer: count=exact` forces a full scan of the matching set; use `count=planned` or omit it.
 
 Responses are capped by `db-max-rows`, 10,000 by default, whether or not `limit` is present.
 

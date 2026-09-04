@@ -103,13 +103,22 @@ START_BLOCK=21000000
 CONFIRMATIONS_BLOCK=12
 ```
 
-The `publicnode` service can then be left stopped:
+To keep the dev node out of the picture, drop the dependency before starting anything. Naming a subset of services on the command line still starts their declared dependencies, so `docker compose up -d db postgrest eth-storage` would start `publicnode` and wait for it to become healthy. `--no-deps` would skip it, but it would also skip the database health gate that `eth-storage` needs, so use an override file instead. Compose loads `docker-compose.override.yml` automatically:
+
+```yaml
+# docker-compose.override.yml
+services:
+  eth-storage:
+    depends_on: !override
+      db:
+        condition: service_healthy
+```
+
+With that file in place, `publicnode` stays stopped:
 
 ```bash
 docker compose up -d db postgrest eth-storage
 ```
-
-`eth-storage` declares a health dependency on `publicnode`, so remove that dependency in a Compose override file if you never want the dev node to start.
 
 ## Data Persistence
 

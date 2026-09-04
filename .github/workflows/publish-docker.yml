@@ -11,6 +11,12 @@ permissions:
   contents: read
   packages: write
 
+# Serialize publication per release tag so two runs cannot race on the same
+# immutable version.
+concurrency:
+  group: publish-docker-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
 env:
   REGISTRY_IMAGE: ghcr.io/adamant-im/eth-transactions-storage
 
@@ -62,6 +68,18 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # Version tags are immutable. A rerun would otherwise rebuild the same
+      # release commit and replace the published digest, because the base image
+      # and dependency constraints can resolve differently over time.
+      - name: Refuse to overwrite an already published version
+        run: |
+          version='${{ steps.meta.outputs.version }}'
+          if docker buildx imagetools inspect "${REGISTRY_IMAGE}:${version}" >/dev/null 2>&1; then
+            echo "::error::${REGISTRY_IMAGE}:${version} is already published. Version tags are immutable; publish a new version instead of re-running this workflow."
+            exit 1
+          fi
+          echo "${REGISTRY_IMAGE}:${version} is unpublished, continuing"
 
       - name: Build and push
         uses: docker/build-push-action@v6

@@ -48,21 +48,17 @@ Do not replace a working `ethsync.service` with the repository template until a 
 
 ## Docker Compose Deployments
 
+The schema must be in place before the new image starts, for the same reason it must on bare metal.
+
 1. Update the checkout, so `create_tables.sql` and `docker-compose.yml` match the new image.
-2. Pin the new version in `.env`:
 
-```ini
-ETH_INDEXER_IMAGE=ghcr.io/adamant-im/eth-transactions-storage:2.5.0
-```
-
-3. Pull and recreate only the indexer:
+2. Stop the indexer:
 
 ```bash
-docker compose pull eth-storage
-docker compose up -d eth-storage
+docker compose stop eth-storage
 ```
 
-4. Apply the schema, because the PostgreSQL entrypoint runs `create_tables.sql` only on an empty data directory:
+3. Apply the schema, because the PostgreSQL entrypoint runs `create_tables.sql` only on an empty data directory:
 
 ```bash
 docker compose exec -T db sh -c \
@@ -70,14 +66,31 @@ docker compose exec -T db sh -c \
   < create_tables.sql
 ```
 
-5. Verify:
+4. Pin the new version in `.env`:
+
+```ini
+ETH_INDEXER_IMAGE=ghcr.io/adamant-im/eth-transactions-storage:2.5.0
+```
+
+5. Pull and start the new indexer:
+
+```bash
+docker compose pull eth-storage
+docker compose up -d eth-storage
+```
+
+6. Verify:
 
 ```bash
 docker compose logs --tail=50 eth-storage
 curl -s http://127.0.0.1:3000/max_block
 ```
 
-Rolling back is setting `ETH_INDEXER_IMAGE` to the previous version tag and repeating steps 3 and 5. See [Docker image](../reference/docker-image.md#rollback).
+::: warning
+Do not start the new image before applying the schema. On a database created before `sync_state` existed, the startup checkpoint query fails with `relation "public.sync_state" does not exist` and the indexer exits with status 1. The Compose service declares no restart policy, so applying the schema afterwards does not bring the container back and indexing stays stopped until you start it again.
+:::
+
+Rolling back is setting `ETH_INDEXER_IMAGE` to the previous version tag and repeating steps 5 and 6. See [Docker image](../reference/docker-image.md#rollback).
 
 ## Switching to the Minimal Index Set
 

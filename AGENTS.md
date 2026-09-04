@@ -105,7 +105,7 @@ If sources disagree:
 | `.env.example`                         | Configuration template           | Documents every standalone, systemd, and Compose variable with safe defaults                                                                          |
 | `docs/`                                | VitePress documentation site     | Product, deployment, configuration, API, and database documentation published to <https://eth-indexer.docs.adamant.im>                                |
 | `docs/.vitepress/config.mjs`           | Documentation site configuration | Navigation, sidebar, sitemap, canonical URLs, and SEO metadata                                                                                        |
-| `docs/public/CNAME`                    | GitHub Pages custom domain       | Ships `eth-indexer.docs.adamant.im` inside the Pages artifact                                                                                         |
+| `docs/public/CNAME`                    | Domain marker in the artifact    | Ships the domain inside the Pages artifact; the effective custom domain is a repository Pages setting                                                 |
 | `.github/workflows/docs.yml`           | Pages deployment                 | Builds and deploys the site from trusted refs only, with `contents: read`, `pages: write`, `id-token: write`                                          |
 | `.github/workflows/docs-build.yml`     | Documentation checks             | Builds the site and runs Markdown and formatting checks on pull requests                                                                              |
 | `.github/workflows/docker-build.yml`   | Container checks                 | Non-publishing image build and Compose smoke test on pull requests                                                                                    |
@@ -195,7 +195,7 @@ The VitePress site in `docs/` is the primary product documentation. `README.md` 
 - Add a new page under `docs/guide/`, `docs/reference/`, or `docs/project/` and register it in the sidebar in `docs/.vitepress/config.mjs`
 - Use relative Markdown links between documentation pages so the build verifies them; use absolute `https://eth-indexer.docs.adamant.im/...` links only from `README.md` and other repository-root files
 - Never commit `docs/.vitepress/cache/` or `docs/.vitepress/dist/`
-- Keep `docs/public/CNAME` set to `eth-indexer.docs.adamant.im`; removing it breaks the custom domain on the next deployment
+- Keep `docs/public/CNAME` set to `eth-indexer.docs.adamant.im`. It ships the domain inside the Pages artifact, but it does not configure it: GitHub ignores an artifact CNAME for Actions-based deployments, and the effective custom domain is a repository Pages setting
 - Local commands: `npm run docs:dev`, `npm run docs:build`, `npm run docs:preview`
 - Update `package-lock.json` with `npm install` whenever documentation dependencies change, and commit it
 

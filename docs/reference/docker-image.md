@@ -149,21 +149,26 @@ The full stack walkthrough is in the [Docker Compose quick start](../guide/quick
 ## Upgrading
 
 ```bash
-# 1. Point at the new version
-sed -i 's/^ETH_INDEXER_IMAGE=.*/ETH_INDEXER_IMAGE=ghcr.io\/adamant-im\/eth-transactions-storage:2.5.0/' .env
+# 1. Stop the indexer so the deployed code and the schema cannot diverge
+docker compose stop eth-storage
 
-# 2. Pull and recreate
-docker compose pull eth-storage
-docker compose up -d eth-storage
-
-# 3. Apply any schema changes
+# 2. Apply any schema changes before the new image starts
 docker compose exec -T db sh -c \
   'psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
   < create_tables.sql
 
-# 4. Verify
+# 3. Point at the new version
+sed -i 's/^ETH_INDEXER_IMAGE=.*/ETH_INDEXER_IMAGE=ghcr.io\/adamant-im\/eth-transactions-storage:2.5.0/' .env
+
+# 4. Pull and start
+docker compose pull eth-storage
+docker compose up -d eth-storage
+
+# 5. Verify
 curl -s http://127.0.0.1:3000/max_block
 ```
+
+The schema step comes first on purpose. A database that predates `sync_state` makes the new indexer's startup checkpoint query fail, and it exits with status 1 without a restart policy to bring it back. Full sequence and the failure mode in [Upgrading](../guide/upgrading.md#docker-compose-deployments).
 
 Keep the repository checkout on the matching tag, because `create_tables.sql` and `docker-compose.yml` are versioned with the image.
 

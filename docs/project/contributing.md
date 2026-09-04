@@ -80,7 +80,23 @@ Publishing a release triggers two workflows:
 
 Both workflows request the minimum permissions they need: `contents: read`, `pages: write`, and `id-token: write` for the documentation deployment, and `contents: read` and `packages: write` for the image publication.
 
+Version tags are immutable. The publish workflow refuses to run if the version tag already exists in the registry, so a rerun cannot replace a published digest with a rebuild — the base image and dependency constraints resolve differently over time, and a pinned version must keep pointing at the artifact it originally pinned. To ship a correction, publish a new version.
+
 Release notes are published at [Releases](https://github.com/Adamant-im/ETH-transactions-storage/releases).
+
+### One-Time Repository Setup
+
+The documentation deployment depends on two repository settings that no workflow can create for itself. The default `GITHUB_TOKEN` can neither enable Pages nor set a custom domain, so a maintainer with admin rights has to do both once, and the first deployment fails until they do.
+
+1. **Settings → Pages → Source:** GitHub Actions
+2. **Settings → Pages → Custom domain:** `eth-indexer.docs.adamant.im`, then Save
+
+The `CNAME` file in `docs/public/` travels inside the Pages artifact, but GitHub ignores an artifact `CNAME` for Actions-based deployments — it is kept for provenance and for a fallback to branch-based publishing, not as configuration. The domain in the repository setting is the one that takes effect.
+
+3. Wait for GitHub to provision the certificate, which can take up to 24 hours, then enable **Enforce HTTPS**
+4. Verify that <https://eth-indexer.docs.adamant.im> serves the site over valid HTTPS before announcing it
+
+The GHCR package also needs to be made public once, after the first release publishes it.
 
 ## Reporting Bugs
 
