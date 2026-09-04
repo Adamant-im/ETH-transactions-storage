@@ -1,0 +1,13 @@
+# Local build override for contributors.
+#
+# Builds the indexer from this checkout instead of pulling the published image:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# The result is tagged separately so a local build never shadows
+# ghcr.io/adamant-im/eth-transactions-storage in the local image cache.
+
+services:
+  eth-storage:
+    image: eth-transactions-storage:local
+    build:
+      context: .

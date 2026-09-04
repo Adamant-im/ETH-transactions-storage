@@ -1,0 +1,89 @@
+name: Publish Docker image
+
+# Runs when a GitHub Release is published (not on every push).
+# The job is skipped unless the release tag points to a commit on master.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY_IMAGE: ghcr.io/adamant-im/eth-transactions-storage
+
+jobs:
+  docker:
+    name: Build and push to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Verify the release tag is on master
+        run: |
+          git fetch origin master
+          git merge-base --is-ancestor HEAD origin/master
+
+      - name: Resolve image tags
+        id: meta
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          if ! printf '%s' "${version}" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.-]+)?$'; then
+            echo "Release tag '${RELEASE_TAG}' is not a semantic version" >&2
+            exit 1
+          fi
+          tags="${REGISTRY_IMAGE}:${version}"
+          if [ "${IS_PRERELEASE}" = 'false' ]; then
+            tags="${tags},${REGISTRY_IMAGE}:latest"
+          else
+            echo 'Prerelease: publishing the version tag only, leaving latest untouched'
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            IMAGE_VERSION=${{ steps.meta.outputs.version }}
+            IMAGE_REVISION=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Verify the published manifest
+        run: docker buildx imagetools inspect "${REGISTRY_IMAGE}:${{ steps.meta.outputs.version }}"
+
+      - name: Smoke test the published image
+        run: |
+          set +e
+          output="$(docker run --rm "${REGISTRY_IMAGE}:${{ steps.meta.outputs.version }}" 2>&1)"
+          exit_code=$?
+          set -e
+          echo "${output}"
+          test "${exit_code}" -eq 2
+          echo "${output}" | grep -q 'ETH_URL'

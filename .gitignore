@@ -10,6 +10,10 @@ logs
 # Node
 node_modules/
 
+# Generated docs
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
 # Python
 __pycache__/
 *.py[cod]

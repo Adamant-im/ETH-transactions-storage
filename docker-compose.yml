@@ -30,20 +30,24 @@ services:
       - db
 
   # Optional local Geth dev node for testing. For production, point ETH_URL to your external Ethereum node.
+  # Pinned to the stable release tag: latest tracks unstable development builds.
   publicnode:
-    image: ethereum/client-go:latest
+    image: ethereum/client-go:stable
     ports:
       - '8545:8545'
       - '8546:8546'
-    command: --dev --dev.period 3 --http --http.addr 0.0.0.0 --http.api web3,eth,admin,personal,net --http.vhosts '*' --ws --ws.addr 0.0.0.0 --ws.port 8546 --ws.api web3,eth,admin,personal,net --datadir /tmp --allow-insecure-unlock
+    command: --dev --dev.period 3 --http --http.addr 0.0.0.0 --http.api web3,eth,net --http.vhosts '*' --ws --ws.addr 0.0.0.0 --ws.port 8546 --ws.api web3,eth,net --datadir /tmp
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://localhost:8545']
       interval: 5s
       timeout: 15s
       retries: 5
 
+  # Indexer service. Uses the published image by default; override
+  # ETH_INDEXER_IMAGE in .env to pin a version, or use docker-compose.build.yml
+  # to build from this checkout.
   eth-storage:
-    build: .
+    image: ${ETH_INDEXER_IMAGE:-ghcr.io/adamant-im/eth-transactions-storage:latest}
     environment:
       DB_NAME: postgres://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-app_db}
       ETH_URL: ${DOCKER_ETH_URL:-ws://publicnode:8546}

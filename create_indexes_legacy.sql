@@ -1,21 +1,28 @@
--- Deprecated / Legacy indexes (optional)
--- These indexes are redundant for official ADAMANT clients (adamant-im and adamant-iOS)
--- and cost ~90-110 GB of additional disk space on ~490M rows (1-year dataset).
--- Only apply these indexes if custom or third-party integrations issue non-standard queries.
+-- Deprecated / legacy indexes (optional)
+--
+-- These indexes are redundant for the standard address-history query shapes
+-- covered by create_indexes.sql and create_indexes_add.sql, and cost roughly
+-- 90-110 GB of additional disk space on ~490M rows (a 1-year dataset).
+-- Production traffic from the ADAMANT clients (adamant-im and adamant-iOS)
+-- never issues the query shapes below.
+--
+-- Apply them only when a custom or third-party consumer needs those shapes.
 
--- Redundant: covered by txto_contract_to_index and txto_w_empty_contract_to_index.
--- Standard ADAMANT clients never query contract_to alone without txto.
+-- Query shape: contract_to = {ABI-encoded holder} without a txto predicate.
+-- Redundant otherwise: covered by txto_contract_to_index and
+-- txto_w_empty_contract_to_index.
 CREATE INDEX IF NOT EXISTS contract_to_index
     ON public.ethtxs USING btree
     (contract_to);
 
--- Redundant: covered by partial txto_w_empty_contract_to_index (ETH)
--- and composite txto_contract_to_index (ERC-20).
+-- Query shape: txto = {address} with no contract_to predicate at all.
+-- Redundant otherwise: covered by the partial txto_w_empty_contract_to_index
+-- for native transfers and by the composite txto_contract_to_index for ERC-20.
 CREATE INDEX IF NOT EXISTS txto_index
     ON public.ethtxs USING btree
     (txto);
 
--- Redundant: no client queries txto AND txfrom equality simultaneously.
+-- Query shape: simultaneous equality on txto and txfrom.
 CREATE INDEX IF NOT EXISTS txto_txfrom_index
     ON public.ethtxs USING btree
     (txto, txfrom);
