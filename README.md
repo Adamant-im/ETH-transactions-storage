@@ -1,293 +1,140 @@
-# Indexer for Ethereum to get transaction list by ETH address
+# ETH Transactions Storage
 
-Known Ethereum nodes lack the functionality to get a transaction list for an ETH address (account). This Indexer allows one to explore ETH and ERC20 transactions by Ethereum address and obtain a history of any user|wallet in just a move as Etherscan does.
+[![Docs](https://img.shields.io/badge/docs-eth--indexer.docs.adamant.im-2c4a7c)](https://eth-indexer.docs.adamant.im)
+[![Container](https://img.shields.io/badge/ghcr.io-eth--transactions--storage-2c4a7c)](https://github.com/Adamant-im/ETH-transactions-storage/pkgs/container/eth-transactions-storage)
+[![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-2c4a7c)](./LICENSE)
 
-Indexer is written in Python. It works as a service in the background:
+Self-hosted Ethereum transaction indexer for native ETH and ERC-20 transfers, with PostgreSQL storage and a read-only PostgREST API.
 
-- Connects to Ethereum node (works well with Geth, Nethermind, or other node, which provides http/ws/ipc API)
-- Stores all transactions in the Postgres database
-- Provides data for API to get transactions by address with postgrest
+Ethereum nodes cannot answer "list the transactions for this address". `ETH-transactions-storage` builds that index for you: it reads blocks from your execution client, writes native ETH transfers and ERC-20 `transfer` calls into PostgreSQL, and serves address transaction history over HTTP. No third-party data provider, no rate limits, no telemetry.
 
-Sample request:
+📖 **Full documentation: <https://eth-indexer.docs.adamant.im>**
 
-![Indexer's request example](./assets/indexer-request.png)
+> Built and maintained by the ADAMANT developer community and **cryptofoundry**.
+> Want custom crypto software, bots, payments or blockchain infrastructure built by engineers with production blockchain experience? [Tell us what to build](https://adamant.business#contact).
 
-## Stored information
+## What It Is For
 
-All indexed transactions include (database field names shown):
+- **Cryptocurrency wallets** rendering per-account ETH and token history
+- **Block explorers and dashboards** backing address pages with SQL
+- **Accounting and treasury tools** exporting transfers for reconciliation
+- **Support and compliance systems** looking up on-chain activity
+- **Monitoring services** watching a known address set with the optional address filter
+- **Custom applications** that want direct SQL access to transfer data
 
-- `time` is a transaction's timestamp
-- `txfrom` sender's Ethereum address
-- `txto` recipient's Ethereum address
-- `value` stores the amount of ETH transferred
-- `gas` indicates `gasUsed`
-- `gasprice` indicates `gasPrice`
-- `block` is a transaction's block number
-- `txhash` is a transaction's hash
-- `contract_to` indicates the recipient's Ethereum address in case of a token transfer
-- `contract_value` stores amount of ERC20 transaction in its tokens
-- `status` tx status
+Works with Geth, Nethermind, Besu, and Erigon over HTTP, WebSocket, or IPC, and with EVM-compatible networks exposing the same JSON-RPC surface.
 
-To reduce storage requirements, Indexer stores only token transfer ERC20 transactions, started with `0xa9059cbb` in raw tx input.
+![Indexer request example](./assets/indexer-request.png)
 
-An example:
+## How It Works
 
-```
-{
-  "time": 1576008898,
-  "txfrom": "0x6B924750e56A674A2Ad01FBF09C7c9012f16f094",
-  "txto": "0x1143E097e134F3407eF6B088672CCECE9A4f8CDD",
-  "gas": 21000,
-  "gasprice": 2500000000,
-  "block": 9084957,
-  "txhash": "0xcf56a031dfc89f5a3686cd441ea97ae96a66f5809a4c8c1b370485a04fb37e0e",
-  "value": 1200000000000000,
-  "contract_to": "",
-  "contract_value": "",
-  "status": true
-}
+```text
+Ethereum node  →  ethsync.py  →  PostgreSQL  →  PostgREST  →  your application
+   JSON-RPC        indexer        ethtxs         REST API
 ```
 
-Refers to transaction 0xcf56a031dfc89f5a3686cd441ea97ae96a66f5809a4c8c1b370485a04fb37e0e.
+The indexer polls new blocks, parses transfers, and writes each block together with its checkpoint in a single database transaction. Restarts resume exactly where they stopped. PostgREST turns the table into a read-only HTTP API with filtering, ordering, and pagination, so there is no API code to write or maintain.
 
-## Ethereum Indexer's API
+See [Architecture](https://eth-indexer.docs.adamant.im/guide/architecture) for the full data flow.
 
-To get Ethereum transactions by address, Postgrest is used. It provides RESTful API to the Postgres index database.
+## Quick Start
 
-After an index is created, you can use requests like
+### Docker Compose
 
-```
-curl -k -X GET "http://localhost:3000/?and=(contract_to.eq.,or(txfrom.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98,txto.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98))&order=time.desc&limit=25"
-```
-
-The request will show the 25 last transactions for Ethereum address 0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98 (Bittrex), ordered by timestamp. For API reference, see [Postgrest](https://postgrest.org/en/stable/api.html).
-
-# Ethereum Indexer Setup
-
-## Prerequisites
-
-- Ethereum node with RPC API enabled: Geth, Nethermind, etc.
-- Python 3
-- Postgresql
-- Postgrest for API
-- nginx or other web server (in case of public API)
-
-## Installation
-
-### Ethereum Node
-
-Make sure your Ethereum node is installed and fully synced. You can check its API and best block height with the command:
-
-```
-curl --data '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
+```bash
+git clone https://github.com/Adamant-im/ETH-transactions-storage.git
+cd ETH-transactions-storage
+cp .env.example .env && chmod 600 .env
+cp filter/addresses.txt.example filter/addresses.txt && chmod 600 filter/addresses.txt
+# set POSTGRES_PASSWORD and DOCKER_ETH_URL in .env
+docker compose up -d
+curl -s http://127.0.0.1:3000/max_block
 ```
 
-### Python modules
+The stack runs PostgreSQL, PostgREST, an optional local Geth dev node, and the indexer image published to `ghcr.io/adamant-im/eth-transactions-storage`. Nothing is built locally.
 
-Install Python 3. Install python modules:
+Full walkthrough: [Docker Compose quick start](https://eth-indexer.docs.adamant.im/guide/quick-start-docker).
 
-```
-apt install python3-pip
-pip3 install web3
-pip3 install psycopg2
-```
+### Manual and systemd
 
-### PostgreSQL
+Follow the [Manual and systemd quick start](https://eth-indexer.docs.adamant.im/guide/quick-start-manual) for the complete installation sequence. Apply the schema and required grants as a PostgreSQL administrator, then configure and start the indexer as the unprivileged `api_user`. The guide also covers the systemd unit and PostgREST setup.
 
-Install Postgres. Create Postgres user/role:
+Once the initial backfill has caught up, create the query indexes as the PostgreSQL administrator:
 
-``` bash
-su - postgres #switch to psql admin user
-createuser -s api_user
+```bash
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_indexes.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_indexes_add.sql
 ```
 
-Where `api_user` is a user who will run the indexer service. (As example, we create a superuser. You can use your own grants.)
+Index maintenance requires the table owner or an administrator; the indexer's runtime grants do not permit it. On a live database, use `CREATE INDEX CONCURRENTLY` or a maintenance window, as described in the [index guide](https://eth-indexer.docs.adamant.im/reference/database#index-strategy).
 
-Create database `index` for Ethereum transaction index:
+## API at a Glance
 
-``` sql
-CREATE DATABASE index;
+| Endpoint     | Purpose                                     |
+| ------------ | ------------------------------------------- |
+| `/ethtxs`    | Indexed native ETH and ERC-20 transfers     |
+| `/max_block` | Highest processed block and indexer version |
+| `/aval`      | Availability probe                          |
+
+```bash
+# Last 25 native ETH transfers for an address, newest first
+curl -s "http://127.0.0.1:3000/ethtxs?and=(contract_to.eq.,or(txfrom.eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98,txto.eq.0xfbb1b73c4f0bda4f67dca266ce6ef42f520fbb98))&order=time.desc&limit=25"
 ```
 
-Add tables into `index` using SQL script `create_tables.sql`:
+Endpoint names, column names, and value encodings are a stable contract across upgrades. Full query syntax, encodings, filtering, and pagination: [REST API reference](https://eth-indexer.docs.adamant.im/reference/api).
 
-``` bash
-psql -f create_tables.sql index
+## Scope and Limitations
+
+Stored: native ETH transfers, and ERC-20 transfers submitted as a direct top-level `transfer(address,uint256)` call.
+
+Not stored: internal ETH transfers, ERC-20 transfers routed through `transferFrom`, multisig, router, batch, or aggregator flows, other token standards, and event logs. These are properties of the current indexing logic, not settings. See [what gets indexed](https://eth-indexer.docs.adamant.im/guide/introduction#what-gets-indexed).
+
+Storage is the main planning constraint. A recent `START_BLOCK`, the recommended five-index set, and the optional address filter are the three levers: see [storage planning](https://eth-indexer.docs.adamant.im/reference/database#storage-planning).
+
+## Documentation
+
+| Page                                                                                       | Contents                                                |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| [Introduction](https://eth-indexer.docs.adamant.im/guide/introduction)                     | What it does, use cases, scope, limitations             |
+| [Architecture](https://eth-indexer.docs.adamant.im/guide/architecture)                     | Components, data flow, sync loop, deployment topologies |
+| [Docker Compose quick start](https://eth-indexer.docs.adamant.im/guide/quick-start-docker) | The fastest path to a running stack                     |
+| [Manual and systemd](https://eth-indexer.docs.adamant.im/guide/quick-start-manual)         | Bare-metal installation and the service unit            |
+| [Configuration](https://eth-indexer.docs.adamant.im/guide/configuration)                   | Every environment variable                              |
+| [Address filter](https://eth-indexer.docs.adamant.im/guide/address-filter)                 | Storing only the addresses you care about               |
+| [Security](https://eth-indexer.docs.adamant.im/guide/security)                             | Read-only roles, row caps, proxy guards, secrets        |
+| [Upgrading](https://eth-indexer.docs.adamant.im/guide/upgrading)                           | Upgrade order, index migration, re-indexing             |
+| [Troubleshooting](https://eth-indexer.docs.adamant.im/guide/troubleshooting)               | Diagnostics and common failures                         |
+| [REST API](https://eth-indexer.docs.adamant.im/reference/api)                              | Endpoints, encodings, filtering, pagination             |
+| [Database and indexes](https://eth-indexer.docs.adamant.im/reference/database)             | Schema, checkpoint, index strategy, storage planning    |
+| [Docker image](https://eth-indexer.docs.adamant.im/reference/docker-image)                 | Tags, architectures, running, upgrades, rollback        |
+
+## Used by ADAMANT
+
+[ADAMANT](https://adamant.im) maintains this project and runs it in production to power Ethereum and ERC-20 transaction history in its wallets: [`adamant-im`](https://github.com/Adamant-im/adamant-im) for Web, PWA, Electron, and Android, and [`adamant-iOS`](https://github.com/Adamant-im/adamant-iOS) on iOS.
+
+That deployment is a documented adopter, not a requirement — no ADAMANT component is needed to run the indexer. It is useful to third-party operators as evidence: the API contract is exercised by shipping clients, and the recommended index set was derived from auditing real production query traffic, which is where the 90–110 GB saving over the legacy index set comes from.
+
+The production query patterns, useful as a compatibility checklist for your own client, are documented on [Used by ADAMANT](https://eth-indexer.docs.adamant.im/project/adamant).
+
+## Contributing
+
+Pull requests target `dev`. Development setup, the checks CI runs, the release process, and the security contact are in [Contributing and Releases](https://eth-indexer.docs.adamant.im/project/contributing). Contributors working with AI assistants should also read [`AGENTS.md`](./AGENTS.md).
+
+```bash
+npm ci                # documentation and Markdown tooling
+npm run docs:dev      # documentation site with hot reload
+npm run lint:py       # Python syntax checks
+npm test              # Python unit tests
 ```
 
-For case-insensitive comparisons, we use `citex` data type instead of `text`.
+## License
 
-Create database indexes to request tx data fast. **It's better to allow this tool to store initial tx data until the current block first, and then create these indexes. Filling initial tx data will be faster this way.**
-
-Create recommended database indexes:
-
-``` bash
-psql -f create_indexes.sql index
-```
-
-Create additional database indexes:
-
-``` bash
-psql -f create_indexes_add.sql index
-```
-
-Additional indexes cover more complex requests, such as getting Ethereum-only or specific token transactions for an address. [See Request examples](#api-request-examples).
-
-Remember to grant privileges to psql database `index` and tables for users you need. Example:
-
-``` sql
-\c index
-GRANT ALL ON ethtxs TO api_user;
-GRANT ALL ON aval TO api_user;
-GRANT ALL ON max_block TO api_user;
-GRANT ALL PRIVILEGES ON DATABASE index TO api_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO api_user;
-```
-
-### Ethereum transaction Indexer
-
-`ethsync.py` is a script that makes an Ethereum transaction index. It accepts the following env variables:
-
-- DB_NAME: Postgres database name. Example: `index`.
-- ETH_URL: Ethereum node url to reach the node. Supports websocket, http and ipc. See examples in `ethsync.py`.
-- START_BLOCK: the first block to synchronize from. Default is 1.
-- CONFIRMATIONS_BLOCK: the number of blocks to leave out of the synch from the end. I.e., last block is current `blockNumber - CONFIRMATIONS_BLOCK`. Default is 0.
-- PERIOD: Number of seconds between synchronization. Default is 20 sec.
-- LOG_FILE: optional file path and name where s=to save logs. If not provided, use StreamHandler.
-
-The indexer can fetch transactions not from the beginning, but from a particular block number `START_BLOCK`. It will speed up the indexing process and reduce database size. For a reference:
-
-- index size starting from 5,555,555 block to 9,000,000 (3.5 mln blocks) is about 190 GB
-- index size starting from 11,000,000 block to 12,230,000 (1 mln blocks) is about 83 GB
-- index size starting from 14,600,000 block to 15,100,000 (0.5 mln blocks) is about 27 GB
-- index size starting from 14,600,000 block to 18,100,000 (3.5 mln blocks) with additional indexes is about 289 GB
-
-At first start, the Indexer will store transactions starting from the block you set. It will take time. After that, it will check for new blocks every `PERIOD` seconds and update the index.
-
-Sample run string:
-
-```
-DB_NAME=index ETH_URL=http://127.0.0.1:8545 START_BLOCK=14600000 LOG_FILE=/home/api_user/ETH-transactions-storage/ethsync.log python3 /home/api_user/ETH-transactions-storage/ethsync.py
-```
-
-We recommend running the Indexer script `ethsync.py` as a background service to ensure it will be restarted in case of failure. See `ethsync.service` as an example. Copy it to /lib/systemd/system/ethsync.service, update according to your settings, then register a service:
-
-```
-systemctl start ethsync.service
-systemctl enable ethsync.service
-```
-
-Note, that indexing takes time. To check the indexing process, get the last indexed block:
-
-```
-psql -d index -c 'SELECT MAX(block) FROM ethtxs;'
-```
-
-And compare it to the Ethereum node's best block.
-
-### Troubleshooting
-
-To test the connection from the script, set a connection line in `ethtest.py`, and run it. In case of success, it will print the current Ethereum's last block.
-
-To test a connection to a Postgres database `index`, run `pgtest.py`.
-
-### Transaction API with Postgrest
-
-[Install and configure](https://postgrest.org/en/stable/install.html) Postgrest.
-Here is an example of running API for user `api_user` connected to `index` database on the 3000 port:
-
-```
-db-uri = "postgres://api_user@/index"
-db-schema = "public"
-db-anon-role = "api_user"
-db-pool = 10
-server-host = "127.0.0.1"
-server-port = 3000
-```
-
-Make sure you add Postgrest in crontab for autostart on reboot:
-
-```
-@reboot cd /usr/share && /usr/bin/postgrest ./postgrest.conf
-```
-  
-### Make Indexer's API public
-
-If you need to provide public API, use any web server like nginx and set a proxy to Postgrest port in config:
-
-```
-location /ethtxs {
-    proxy_pass http://127.0.0.1:3000;
-}
-location /aval {
-    proxy_pass http://127.0.0.1:3000;
-}
-location /max_block {
-    proxy_pass http://127.0.0.1:3000;
-}
-
-```
-
-This way, endpoints will be available:
-
-- `/ethtxs` used to fetch Ethereum transactions by address
-- `/aval` returns the status of service. Endpoint `aval` is a table with `status` field just to check API availability.
-- `/max_block` returns max Ethereum-indexed block
-
-Example:
-
-```
-https://yourdomain.com/max_block
-```
-
-## Dockerized and docker-compose
-
-by Guénolé de Cadoudal (guenoledc@yahoo.fr)
-
-In the `docker-compose.yml`, you find a configuration that shows how this tool can be embedded in a docker configuration with the following processes:
-
-- postgres db: to store the indexed data
-- postgREST tool to expose the data as a REST api (see above comments)
-- GETH node in POA mode. It can be Nethermind or another node, but it has not been tested
-- EthSync tool (this tool)
-
-[Set env variables](#ethereum-transaction-indexer).
-
-# API request examples
-
-Get the last 25 Ethereum transactions without ERC-20 transactions for address 0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98:
-
-```
-curl -k -X GET "http://localhost:3000/ethtxs?and=(contract_to.eq.,or(txfrom.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98,txto.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98))&order=time.desc&limit=25"
-
-```
-
-Get the last 25 USDT transactions for address 0xabfDF505fFd5587D9E7707dFB47F45AF1f03E275:
-
-```
-curl -k -X GET "http://localhost:3000/ethtxs?and=(txto.eq.0xdac17f958d2ee523a2206206994597c13d831ec7,or(txfrom.eq.0xabfDF505fFd5587D9E7707dFB47F45AF1f03E275,contract_to.eq.000000000000000000000000abfDF505fFd5587D9E7707dFB47F45AF1f03E275))&order=time.desc&limit=25"
-
-```
-
-Get the last 25 ERC-20 transactions without Ethereum transactions for address 0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98:
-
-```
-curl -k -X GET "http://localhost:3000/ethtxs?and=(contract_to.neq.,or(txfrom.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98,txto.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98))&order=time.desc&limit=25"
-
-```
-
-Get last 25 transactions for both ERC-20 and Ethereum for address 0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98:
-
-```
-curl -k -X GET "http://localhost:3000/ethtxs?and=(or(txfrom.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98,txto.eq.0xFBb1b73C4f0BDa4f67dcA266ce6Ef42f520fBB98))&order=time.desc&limit=25"
-
-```
-
-# License
-
-Copyright © 2020-2024 ADAMANT Foundation
-Copyright © 2017-2020 ADAMANT TECH LABS LP
+Copyright © 2025–2026 ADAMANT developer community  
+Copyright © 2020–2024 ADAMANT Foundation  
+Copyright © 2017–2020 ADAMANT TECH LABS LP
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-You should have received a copy of the GNU General Public License along with this program. If not, see http://www.gnu.org/licenses/.
+
+You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.

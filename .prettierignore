@@ -1,0 +1,10 @@
+.ai-ignored/
+.ai-tasks/
+.claude/
+data/
+logs/
+__pycache__/
+*.py[cod]
+package-lock.json
+docs/.vitepress/cache/
+docs/.vitepress/dist/

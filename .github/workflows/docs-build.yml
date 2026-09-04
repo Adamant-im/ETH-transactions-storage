@@ -1,0 +1,70 @@
+name: Docs build
+
+# Validates documentation and Markdown on pull requests and on the integration
+# branch. This workflow never deploys, so untrusted pull-request code cannot
+# reach the GitHub Pages environment.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.prettierrc'
+      - '.prettierignore'
+      - '.markdownlint.jsonc'
+      - '.github/workflows/docs-build.yml'
+  push:
+    branches:
+      - dev
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.prettierrc'
+      - '.prettierignore'
+      - '.markdownlint.jsonc'
+      - '.github/workflows/docs-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and lint docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint Markdown
+        run: npm run lint:md
+
+      - name: Build docs
+        run: npm run docs:build
+
+      - name: Verify no generated site files are committed
+        run: |
+          if git ls-files --error-unmatch docs/.vitepress/dist >/dev/null 2>&1; then
+            echo 'docs/.vitepress/dist must not be committed' >&2
+            exit 1
+          fi
+          if git ls-files --error-unmatch docs/.vitepress/cache >/dev/null 2>&1; then
+            echo 'docs/.vitepress/cache must not be committed' >&2
+            exit 1
+          fi
