@@ -11,6 +11,9 @@ filter/addresses.txt
 data/
 logs/
 node_modules/
+package-lock.json
+docs/
+.github/
 __pycache__/
 *.py[cod]
 *.md

@@ -1,7 +1,7 @@
 {
   "name": "eth-transactions-storage",
   "version": "2.5.0",
-  "description": "Ethereum native and ERC-20 transaction indexer and storage in PostgreSQL with PostgREST API",
+  "description": "Self-hosted Ethereum transaction indexer for native ETH and ERC-20 transfers with PostgreSQL and PostgREST",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -9,29 +9,41 @@
   "scripts": {
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "lint:md": "markdownlint \"**/*.md\" --ignore .ai-ignored --ignore .ai-tasks --ignore node_modules",
+    "lint:md": "markdownlint \"**/*.md\" --ignore .ai-ignored --ignore .ai-tasks --ignore node_modules --ignore docs/.vitepress/cache --ignore docs/.vitepress/dist",
     "lint:py": "python3 -m py_compile address_filter.py database.py ethsync.py ethtest.py pgtest.py test_address_filter.py test_database.py",
-    "test": "python3 -m unittest test_address_filter.py test_database.py"
+    "test": "python3 -m unittest test_address_filter.py test_database.py",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "keywords": [
-    "adm",
-    "adamant",
     "ethereum",
-    "eth",
+    "ethereum-indexer",
+    "ethereum-transactions",
     "erc20",
-    "indexer",
-    "blockchain",
-    "postgrest",
+    "blockchain-indexer",
+    "transaction-history",
+    "address-indexer",
+    "self-hosted",
+    "open-source",
+    "docker",
     "postgresql",
+    "postgrest",
+    "rest-api",
+    "python",
     "web3",
+    "geth",
+    "nethermind",
+    "besu",
+    "erigon",
+    "cryptocurrency-wallet",
     "crypto",
     "cryptocurrency",
-    "transactions",
-    "storage",
-    "decentralization",
+    "blockchain",
+    "indexer",
     "privacy",
     "security",
-    "wallet"
+    "adamant"
   ],
   "author": "ADAMANT community developers <devs@adamant.im>, ADAMANT Foundation <devs@adamant.im>, ADAMANT Tech Labs <devs@adamant.im>",
   "license": "GPL-3.0",
@@ -42,9 +54,10 @@
   "bugs": {
     "url": "https://github.com/Adamant-im/ETH-transactions-storage/issues"
   },
-  "homepage": "https://github.com/Adamant-im/ETH-transactions-storage#readme",
+  "homepage": "https://eth-indexer.docs.adamant.im",
   "devDependencies": {
     "markdownlint-cli": "^0.49.1",
-    "prettier": "^3.5.0"
+    "prettier": "^3.5.0",
+    "vitepress": "2.0.0-alpha.19"
   }
 }

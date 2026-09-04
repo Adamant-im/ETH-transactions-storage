@@ -1,0 +1,155 @@
+name: Docker build
+
+# Non-publishing container validation for pull requests and the integration
+# branch: builds the indexer image, checks that no operator state leaks into it,
+# and runs the Docker Compose stack end to end against a local Geth dev node.
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - 'docker-compose.build.yml'
+      - 'requirements.txt'
+      - '**/*.py'
+      - '**/*.sql'
+      - '.env.example'
+      - 'package.json'
+      - '.github/workflows/docker-build.yml'
+  push:
+    branches:
+      - dev
+      - master
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - 'docker-compose.build.yml'
+      - 'requirements.txt'
+      - '**/*.py'
+      - '**/*.sql'
+      - '.env.example'
+      - 'package.json'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: eth-transactions-storage:ci
+  ETH_INDEXER_IMAGE: eth-transactions-storage:ci
+
+jobs:
+  build:
+    name: Build and smoke test the image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Python checks
+        run: |
+          python3 -m py_compile address_filter.py database.py ethsync.py ethtest.py pgtest.py \
+            test_address_filter.py test_database.py
+          python3 -m unittest test_address_filter.py test_database.py
+
+      - name: Create local operator files that must never enter the image
+        run: |
+          cp .env.example .env
+          sed -i 's|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=ci-test-password|' .env
+          sed -i 's|^PERIOD=.*|PERIOD=5|' .env
+          printf '0x1111111111111111111111111111111111111111\n' > filter/addresses.txt
+
+      - name: Build the indexer image
+        run: |
+          docker build \
+            --build-arg IMAGE_VERSION=ci \
+            --build-arg IMAGE_REVISION="${GITHUB_SHA}" \
+            -t "${IMAGE}" .
+
+      - name: Verify the image carries no operator state
+        run: |
+          docker run --rm --entrypoint sh "${IMAGE}" -c '
+            set -e
+            for path in .env filter/addresses.txt .git node_modules data logs docs; do
+              if [ -e "/eth-storage/$path" ]; then
+                echo "Unexpected path baked into the image: $path" >&2
+                exit 1
+              fi
+            done
+            ls -la /eth-storage /eth-storage/filter
+          '
+
+      - name: Verify the image reports the repository version
+        run: |
+          expected="$(jq -r .version package.json)"
+          actual="$(docker run --rm --entrypoint python3 "${IMAGE}" \
+            -c "import json; print(json.load(open('package.json'))['version'])")"
+          echo "expected=${expected} actual=${actual}"
+          test "${expected}" = "${actual}"
+
+      - name: Verify the entrypoint fails closed without an RPC endpoint
+        run: |
+          set +e
+          output="$(docker run --rm "${IMAGE}" 2>&1)"
+          exit_code=$?
+          set -e
+          echo "${output}"
+          test "${exit_code}" -eq 2
+          echo "${output}" | grep -q 'ETH_URL'
+
+      - name: Verify OCI labels
+        run: |
+          docker image inspect --format '{{json .Config.Labels}}' "${IMAGE}" | jq .
+          for label in source revision version licenses title description; do
+            value="$(docker image inspect \
+              --format "{{index .Config.Labels \"org.opencontainers.image.${label}\"}}" "${IMAGE}")"
+            if [ -z "${value}" ]; then
+              echo "Missing OCI label: org.opencontainers.image.${label}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Validate Docker Compose configuration
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+
+      - name: Start the stack with the freshly built image
+        run: docker compose up -d --wait --wait-timeout 300
+
+      - name: Verify the API answers and the indexer advances
+        run: |
+          curl -fsS http://127.0.0.1:3000/aval | jq -e '.[0].status == true'
+          for attempt in $(seq 1 60); do
+            response="$(curl -fsS http://127.0.0.1:3000/max_block || true)"
+            echo "attempt ${attempt}: ${response}"
+            max="$(printf '%s' "${response}" | jq -r '.[0].max // "null"')"
+            if [ "${max}" != "null" ] && [ -n "${max}" ]; then
+              echo "Indexer reached block ${max}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'The indexer did not advance the checkpoint within the timeout' >&2
+          exit 1
+
+      - name: Verify the checkpoint survives a restart
+        run: |
+          before="$(curl -fsS http://127.0.0.1:3000/max_block | jq -r '.[0].max')"
+          docker compose restart eth-storage
+          sleep 20
+          after="$(curl -fsS http://127.0.0.1:3000/max_block | jq -r '.[0].max')"
+          echo "before=${before} after=${after}"
+          test "${after}" -ge "$((before - 1))"
+
+      - name: Show service logs
+        if: always()
+        run: docker compose logs --tail=100
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
