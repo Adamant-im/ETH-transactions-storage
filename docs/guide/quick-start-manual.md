@@ -7,7 +7,8 @@ This path installs the indexer directly on a host, which is the usual choice whe
 - Synchronized Ethereum node with JSON-RPC enabled
 - Python 3.9 or newer
 - PostgreSQL 12 or newer
-- PostgREST 10 or newer, if you want the REST API
+- PostgREST 10 or newer, if you want the REST API. Version 11 or newer for the role-level `statement_timeout` guard described in [Security](./security.md#these-rules-are-heuristics)
+- An account able to administer PostgreSQL, for the schema and role setup in step 2
 
 Verify the node first:
 
@@ -27,29 +28,32 @@ pip3 install -r requirements.txt
 
 ## 2. Create the Database and Role
 
-`api_user` does not need superuser privileges:
+Setup is privileged; running the indexer is not. `create_tables.sql` creates the `citext` extension and the `web_anon` role, so it has to run as a PostgreSQL administrator. `api_user`, the role the indexer connects as, never needs superuser privileges.
+
+Create the role and the database:
 
 ```bash
-sudo su - postgres
-createuser api_user
-createdb -O api_user index
-exit
+sudo -u postgres createuser api_user
+sudo -u postgres createdb -O api_user index
 ```
 
-Apply the schema, views, and the read-only role:
+Apply the schema, views, and the read-only role. Redirect the file instead of passing `-f`, so your own shell reads it and the `postgres` user needs no access to the checkout:
 
 ```bash
-psql -v ON_ERROR_STOP=1 -d index -f create_tables.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_tables.sql
 ```
 
-Grant the indexer the minimum it needs:
+Grant the indexer the minimum it needs, in the same privileged session:
 
-```sql
-\c index
+```bash
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index <<'SQL'
 GRANT SELECT, INSERT, DELETE ON public.ethtxs TO api_user;
 GRANT SELECT, INSERT, UPDATE ON public.sync_state TO api_user;
 GRANT SELECT ON public.aval, public.max_block TO api_user;
+SQL
 ```
+
+Applying `create_tables.sql` as `api_user` fails at `CREATE ROLE web_anon` with `permission denied to create role`, and running it from a root shell without `-u postgres` fails earlier with `role "root" does not exist`. Use the administrator for this step.
 
 `create_tables.sql` is idempotent and safe to re-run. Details on every object it creates are in the [database reference](../reference/database.md).
 

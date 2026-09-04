@@ -11,10 +11,11 @@ permissions:
   contents: read
   packages: write
 
-# Serialize publication per release tag so two runs cannot race on the same
-# immutable version.
+# Serialize all publication. Both `v2.5.0` and `2.5.0` are accepted release
+# tags and normalize to the same image tag, so a group keyed on the release tag
+# would put two writers of one immutable version into different groups.
 concurrency:
-  group: publish-docker-${{ github.event.release.tag_name }}
+  group: publish-docker
   cancel-in-progress: false
 
 env:
@@ -72,14 +73,38 @@ jobs:
       # Version tags are immutable. A rerun would otherwise rebuild the same
       # release commit and replace the published digest, because the base image
       # and dependency constraints can resolve differently over time.
+      #
+      # The check distinguishes three outcomes. The tag is present: refuse. The
+      # package has no versions yet: continue. Anything else, including auth,
+      # rate-limit, network, and server errors: refuse, because an inconclusive
+      # lookup must never authorize overwriting a published version.
       - name: Refuse to overwrite an already published version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          version='${{ steps.meta.outputs.version }}'
-          if docker buildx imagetools inspect "${REGISTRY_IMAGE}:${version}" >/dev/null 2>&1; then
-            echo "::error::${REGISTRY_IMAGE}:${version} is already published. Version tags are immutable; publish a new version instead of re-running this workflow."
+          set +e
+          tags="$(gh api --paginate \
+            '/orgs/adamant-im/packages/container/eth-transactions-storage/versions' \
+            --jq '.[].metadata.container.tags[]?' 2>&1)"
+          lookup_status=$?
+          set -e
+
+          if [ "${lookup_status}" -ne 0 ]; then
+            if printf '%s\n' "${tags}" | grep -q 'HTTP 404'; then
+              echo "The package has no versions yet, this is its first publication"
+              exit 0
+            fi
+            echo "::error::Could not determine whether ${REGISTRY_IMAGE}:${VERSION} is already published, so publication is refused. Lookup output: ${tags}"
             exit 1
           fi
-          echo "${REGISTRY_IMAGE}:${version} is unpublished, continuing"
+
+          if printf '%s\n' "${tags}" | grep -Fxq "${VERSION}"; then
+            echo "::error::${REGISTRY_IMAGE}:${VERSION} is already published. Version tags are immutable; publish a new version instead of re-running this workflow."
+            exit 1
+          fi
+
+          echo "${REGISTRY_IMAGE}:${VERSION} is unpublished, continuing"
 
       - name: Build and push
         uses: docker/build-push-action@v6

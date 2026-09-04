@@ -59,10 +59,13 @@ Full walkthrough: [Docker Compose quick start](https://eth-indexer.docs.adamant.
 
 ```bash
 pip3 install -r requirements.txt
-createdb -O api_user index
-psql -v ON_ERROR_STOP=1 -d index -f create_tables.sql
+sudo -u postgres createuser api_user
+sudo -u postgres createdb -O api_user index
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_tables.sql
 DB_NAME=index ETH_URL=http://127.0.0.1:8545 START_BLOCK=21000000 python3 ethsync.py
 ```
+
+Schema setup needs a PostgreSQL administrator; the indexer itself runs as the unprivileged `api_user`. Grants and the full walkthrough are in the manual quick start.
 
 Then create the query indexes once the initial backfill has caught up:
 

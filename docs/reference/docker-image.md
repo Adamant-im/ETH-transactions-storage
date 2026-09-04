@@ -174,16 +174,18 @@ Keep the repository checkout on the matching tag, because `create_tables.sql` an
 
 ## Rollback
 
-Version tags are immutable, so rolling back is pointing at the earlier one:
+Version tags are immutable, so rolling back is pointing at an earlier published version:
 
 ```ini
-ETH_INDEXER_IMAGE=ghcr.io/adamant-im/eth-transactions-storage:2.4.1
+ETH_INDEXER_IMAGE=ghcr.io/adamant-im/eth-transactions-storage:<previous-version>
 ```
 
 ```bash
 docker compose pull eth-storage
 docker compose up -d eth-storage
 ```
+
+Pick the target from the [published package versions](https://github.com/Adamant-im/ETH-transactions-storage/pkgs/container/eth-transactions-storage), not from the repository's Git tags. Only releases built by the current publishing workflow exist as images, so image rollback becomes available once a second such release has been published; before that there is no earlier image to roll back to. Git tags older than that, such as `v2.4.1`, were never published as images and predate `sync_state` entirely, which puts them outside the supported range in any case.
 
 The database schema is additive, so an older indexer runs against a newer schema without changes — the extra objects are simply unused. Two limits apply: `max_block.version` keeps reporting whatever the last applied `create_tables.sql` wrote, and rolling back past the introduction of `sync_state` is not supported.
 

@@ -4,7 +4,7 @@ The repository ships a Compose stack that starts PostgreSQL, PostgREST, an optio
 
 ## Prerequisites
 
-- Docker Engine 24+ with the Compose v2 plugin
+- Docker Engine 24+ with the Compose v2 plugin. Compose 2.24.4 or later for the optional `!override` recipe on this page
 - An Ethereum RPC endpoint for anything beyond local experimentation
 - Free disk space matching your intended block range, see [storage planning](../reference/database.md#storage-planning)
 
@@ -113,6 +113,8 @@ services:
       db:
         condition: service_healthy
 ```
+
+The `!override` merge tag needs [Docker Compose 2.24.4 or later](https://docs.docker.com/reference/compose-file/merge/#replace-value). On an earlier v2 plugin, run the dev node alongside the real endpoint instead — it is idle once `DOCKER_ETH_URL` points elsewhere — or upgrade Compose.
 
 With that file in place, `publicnode` stays stopped:
 

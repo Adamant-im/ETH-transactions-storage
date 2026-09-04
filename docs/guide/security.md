@@ -104,6 +104,39 @@ ALTER ROLE web_anon SET statement_timeout = '5s';
 
 `db-max-rows` caps the rows a request returns. `statement_timeout` caps the work it is allowed to do, which is the part a regex cannot see. Together they put a ceiling on any single request regardless of how it is shaped. Set the value above your slowest legitimate query, measured against your own dataset rather than guessed, since a cold cache on a large index is much slower than a warm one.
 
+::: warning Requires PostgREST 11 or newer
+Applying settings of the impersonated role arrived with [configurable role settings in PostgREST 11](https://github.com/PostgREST/postgrest/releases/tag/v11.0.0). On version 10 this `ALTER ROLE` is silently ignored for API requests. Either upgrade, or give PostgREST its own login role — separate from the one the indexer connects as, so the limit does not apply to indexing — and set `statement_timeout` on that login role instead.
+:::
+
+A running PostgREST does not pick the change up on its own, so the safeguard is not active yet. Reload it:
+
+```sql
+NOTIFY pgrst, 'reload config';
+```
+
+A service restart works too. Then confirm the limit is really in force, rather than assuming it. Add a temporary probe, check it, and remove it again — do this before the endpoint is public, or on a staging instance:
+
+```sql
+CREATE FUNCTION public.probe_statement_timeout() RETURNS text
+  LANGUAGE sql STABLE AS $$ SELECT current_setting('statement_timeout') $$;
+GRANT EXECUTE ON FUNCTION public.probe_statement_timeout() TO web_anon;
+NOTIFY pgrst, 'reload schema';
+```
+
+```bash
+curl -s "http://127.0.0.1:3000/rpc/probe_statement_timeout"
+# "5s" — active
+# "0"  — PostgREST has not applied the role setting yet
+```
+
+```sql
+REVOKE EXECUTE ON FUNCTION public.probe_statement_timeout() FROM web_anon;
+DROP FUNCTION public.probe_statement_timeout();
+NOTIFY pgrst, 'reload schema';
+```
+
+Without the reload, requests keep running with `statement_timeout = 0` while the setting sits on the role, which looks like a configured safeguard and is not one.
+
 If you need a hard guarantee that only known query shapes reach the database, put a small validating service in front of PostgREST that parses the query string and allow-lists the exact shapes your clients use. Extending the regex further is not a path to that guarantee.
 
 ## Only Expose What You Need

@@ -25,10 +25,10 @@ git checkout <version-tag>
 pip3 install -r requirements.txt
 ```
 
-4. **Apply the schema** as a role allowed to change grants. The script is idempotent: it creates missing objects, initializes `sync_state` from the existing highest block, grants permissions to existing `api_user` and `app_user` roles, and refreshes the `max_block` view. It never deletes transaction data.
+4. **Apply the schema** as a PostgreSQL administrator, because the script manages the `citext` extension, the `web_anon` role, and grants. It is idempotent: it creates missing objects, initializes `sync_state` from the existing highest block, grants permissions to existing `api_user` and `app_user` roles, and refreshes the `max_block` view. It never deletes transaction data.
 
 ```bash
-psql -v ON_ERROR_STOP=1 -d index -f create_tables.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d index < create_tables.sql
 ```
 
 5. **Verify the environment.** Confirm the service still supplies the production `DB_NAME`, `ETH_URL`, `START_BLOCK`, `CONFIRMATIONS_BLOCK`, `PERIOD`, and `LOG_FILE` values. An existing systemd unit can stay as it is: process environment values take precedence over `.env`, and the address filter defaults to disabled.
