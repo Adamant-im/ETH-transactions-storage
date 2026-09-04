@@ -7,12 +7,15 @@ name: Docs
 # default branch, and manual runs. Pull requests are validated by docs-build.yml
 # and never reach the Pages environment.
 #
-# One-time repository prerequisites, both of which need repository admin rights:
+# One-time repository prerequisites, all of which need repository admin rights:
 #   1. Settings > Pages > Source: GitHub Actions
 #   2. Settings > Pages > Custom domain: eth-indexer.docs.adamant.im, then
 #      Enforce HTTPS once GitHub has provisioned the certificate
-# The default GITHUB_TOKEN cannot perform either step, so the first run fails
-# until they are done.
+#   3. Settings > Environments > github-pages > Deployment branches and tags:
+#      add a `v*` tag rule next to the master branch rule, or the release
+#      trigger below is rejected because it deploys from refs/tags/vX.Y.Z
+# The default GITHUB_TOKEN cannot perform any of these, so runs fail until
+# they are done.
 
 on:
   push:

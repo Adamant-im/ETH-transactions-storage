@@ -86,15 +86,19 @@ Release notes are published at [Releases](https://github.com/Adamant-im/ETH-tran
 
 ### One-Time Repository Setup
 
-The documentation deployment depends on two repository settings that no workflow can create for itself. The default `GITHUB_TOKEN` can neither enable Pages nor set a custom domain, so a maintainer with admin rights has to do both once, and the first deployment fails until they do.
+The documentation deployment depends on repository settings that no workflow can create for itself. The default `GITHUB_TOKEN` can neither enable Pages nor set a custom domain, so a maintainer with admin rights has to do them once, and the first deployment fails until they do.
 
 1. **Settings → Pages → Source:** GitHub Actions
 2. **Settings → Pages → Custom domain:** `eth-indexer.docs.adamant.im`, then Save
 
 The `CNAME` file in `docs/public/` travels inside the Pages artifact, but GitHub ignores an artifact `CNAME` for Actions-based deployments — it is kept for provenance and for a fallback to branch-based publishing, not as configuration. The domain in the repository setting is the one that takes effect.
 
-3. Wait for GitHub to provision the certificate, which can take up to 24 hours, then enable **Enforce HTTPS**
-4. Verify that <https://eth-indexer.docs.adamant.im> serves the site over valid HTTPS before announcing it
+3. **Settings → Environments → `github-pages` → Deployment branches and tags:** add a tag rule `v*` alongside the `master` branch rule
+
+   GitHub creates this environment automatically, restricted to the default branch. A release-triggered run deploys from `refs/tags/vX.Y.Z`, which that rule alone rejects, so publishing a release would fail the deployment while a push to `master` succeeded.
+
+4. Wait for GitHub to provision the certificate, which can take up to 24 hours, then enable **Enforce HTTPS**
+5. Verify that <https://eth-indexer.docs.adamant.im> serves the site over valid HTTPS before announcing it
 
 The GHCR package also needs to be made public once, after the first release publishes it.
 
